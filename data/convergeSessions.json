@@ -1,0 +1,160 @@
+[
+  {
+    "sessionId": "CONV-1780931573127-nj5sotl28",
+    "createdAt": "2026-06-08T15:12:53.127Z",
+    "primarySymptom": "员工流失严重",
+    "secondarySymptoms": [
+      "利润下降",
+      "销售业绩不达标"
+    ],
+    "selectedProblemFocus": "员工流失严重",
+    "questionChains": [
+      {
+        "chainId": "CHAIN-1780931576686-j56d86",
+        "targetSymptom": "员工流失严重",
+        "questions": [
+          {
+            "depth": 1,
+            "question": "你提到员工流失严重，是什么让你觉得这是目前最需要关注的问题？",
+            "userAnswer": "因为最近半年走了5个核心员工，都是销售骨干",
+            "targetAssumption": "客户认为员工流失是独立且首要的病因，而非某种更深层结构的结果。",
+            "attributionShifted": false,
+            "emergingHypothesis": "",
+            "convergenceScore": 0.2,
+            "timestamp": "2026-06-08T15:12:58.832Z"
+          },
+          {
+            "depth": 2,
+            "question": "这5位销售骨干离开之前，他们的个人业绩或客户资源有没有什么共同的变化？",
+            "userAnswer": "他们的业绩其实还行，但都说公司发展空间有限",
+            "targetAssumption": "客户认为流失原因是外部竞争或薪酬，而非内部结构性问题",
+            "attributionShifted": false,
+            "emergingHypothesis": "",
+            "convergenceScore": 0.4,
+            "timestamp": "2026-06-08T15:13:09.012Z"
+          },
+          {
+            "depth": 3,
+            "question": "如果现在公司立刻给所有销售骨干大幅加薪或升职，你认为他们留下的可能性有多大？",
+            "userAnswer": "说实话，我觉得不一定管用，因为他们说的发展空间不只是钱的问题",
+            "targetAssumption": "客户假设员工离开是因为发展空间有限，且改善发展空间就能解决问题",
+            "attributionShifted": false,
+            "emergingHypothesis": "",
+            "convergenceScore": 0.6,
+            "timestamp": "2026-06-08T15:13:15.525Z"
+          }
+        ],
+        "convergenceScore": 0.6,
+        "extractedAssumptions": []
+      }
+    ],
+    "currentChainId": "CHAIN-1780931576686-j56d86",
+    "emergingInsights": [],
+    "stopReason": "USER_CONFIRMED",
+    "hypothesis": {
+      "statement": "照你刚才说的——『他们都说公司发展空间有限』和『我觉得不一定管用，因为他们说的发展空间不只是钱的问题』——听起来你现在的想法是，这些销售骨干的离开，可能不是因为薪酬或职位本身，而是他们对公司能提供的成长路径或未来可能性失去了信心。我理解得对吗？",
+      "userPhrasing": "他们都说公司发展空间有限；我觉得不一定管用，因为他们说的发展空间不只是钱的问题",
+      "confirmedByUser": true,
+      "observableEvidence": [
+        "最近半年走了5个核心员工，都是销售骨干",
+        "他们的业绩其实还行，但都说公司发展空间有限",
+        "客户认为即使大幅加薪或升职，他们留下的可能性也不大"
+      ],
+      "verificationMethod": "观察并记录上述指标的变化",
+      "verificationPeriodDays": 7
+    },
+    "sevenDayValidationPlan": {
+      "day1_3": "第1-3天，你找最近半年离职的5位销售骨干中还能联系到的3位，各聊15分钟。不问薪酬，只问三个问题：①你离开后最怀念公司哪一点？②你理想中未来3年的工作状态是怎样的？③如果公司能提供一样你现在没有的东西，你觉得最可能是哪样？同时，从HR或直属领导那里拿到这5人离职前6个月的月度业绩数据、晋升记录和1对1面谈纪要（如果有）。",
+      "day4_6": "第4-6天，你从现有销售团队里选2位业绩中上、平时较少抱怨的员工，分别约他们喝杯咖啡。不提离职的事，而是问：『如果公司能帮你实现一个对你职业成长最重要的目标，你觉得会是什么？』同时，你在团队里发起一个匿名小调查（仅3个选项）：『你目前最希望公司提供的是：A. 明确的晋升阶梯  B. 跨部门轮岗学习机会  C. 外部培训或行业交流资源』。收集至少10份有效回复。",
+      "day7": "第7天，你把前6天收集到的信息整理成一张对比表：左边是离职员工提到的『缺失点』，右边是现有员工调查中排第一的需求。然后你找一位你信任的直属上级或合伙人，花20分钟分享你的发现和初步判断，并请对方给一个反馈：『如果我们要在1个月内做一项最小改变来回应这个需求，你觉得最可行的是什么？』",
+      "dailyCheckItems": [
+        "每天结束时记录一条『今天听到的、关于成长或发展空间的具体说法』",
+        "每天检查自己是否问了『开放性问题』（不是『是不是』，而是『你觉得呢』）",
+        "每天确认自己没有在沟通中给出承诺或暗示改变，只收集信息"
+      ],
+      "successCriteria": "7天后，你手里有至少3条来自离职员工和5条来自现有员工的、关于『发展空间』的具体描述（而非笼统抱怨），并且你清楚知道：这个『空间不足』到底是缺晋升路径、缺学习资源、缺项目机会、还是缺方向感。如果连一条具体描述都拿不到，说明问题可能不在成长空间上，需要换方向验证。"
+    },
+    "convergenceSummary": "**你的假设与实验总结**\n\n**你最初的看法：**  \n“员工流失严重”，核心原因是“公司发展空间有限”。\n\n**对话中浮现的新看法：**  \n你意识到，即使立刻大幅加薪或升职，“不一定管用”，因为“发展空间不只是钱的问题”。这让你开始怀疑：骨干离开的真正原因，可能不是薪酬或职位，而是对公司未来成长路径的失望。\n\n**你决定验证的假设：**  \n销售骨干离职的核心原因是“对公司能提供的成长路径或未来可能性失去了信心”，而非单纯薪酬或职位问题。\n\n**接下来7天的行动：**  \n1. 找最近离职的2位销售骨干进行一次坦诚的离职后沟通，重点问：“离开时，你心里最遗憾或最失望的是什么？”  \n2. 列出他们过去半年提到过的“发展空间”具体指什么（如晋升通道、培训机会、业务方向等）。  \n3. 对比仍在职的骨干，私下问：“如果未来一年公司不涨薪，但给你一个明确的成长路径，你愿意留下吗？”",
+    "matchedCaseIds": [
+      "物流·20人·C001"
+    ],
+    "totalQuestions": 3,
+    "convergenceProgress": 60
+  },
+  {
+    "sessionId": "CONV-1780932227237-vx20oozix",
+    "createdAt": "2026-06-08T15:23:47.237Z",
+    "primarySymptom": "员工流失",
+    "secondarySymptoms": [
+      "销售下降",
+      "利润下滑"
+    ],
+    "selectedProblemFocus": "销售下降",
+    "questionChains": [
+      {
+        "chainId": "CHAIN-1780932227242-7nclsy",
+        "targetSymptom": "销售下降",
+        "questions": [
+          {
+            "depth": 1,
+            "question": "你提到销售下降，是什么让你觉得这是目前最需要关注的问题？",
+            "userAnswer": "我觉得是销售团队不够努力，竞争对手都在增长",
+            "targetAssumption": "客户默认销售下降是核心原因，而非其他潜在结构性问题",
+            "attributionShifted": false,
+            "emergingHypothesis": "",
+            "convergenceScore": 0.2,
+            "timestamp": "2026-06-08T15:23:49.287Z"
+          },
+          {
+            "depth": 2,
+            "question": "你提到竞争对手都在增长，能给我一个具体的数字或事件，说明他们增长在哪里吗？",
+            "userAnswer": "加大了激励，但效果不明显，我现在不确定是不是销售的问题了",
+            "targetAssumption": "客户认为销售下降是因为团队不够努力，而非外部竞争格局或产品本身的变化",
+            "attributionShifted": false,
+            "emergingHypothesis": "",
+            "convergenceScore": 0.35,
+            "timestamp": "2026-06-08T15:23:51.149Z"
+          },
+          {
+            "depth": 3,
+            "question": "如果销售团队明天业绩翻倍，你担心什么问题仍然存在？",
+            "userAnswer": "说实话，我觉得可能问题不在销售本身，可能是产品定位的问题",
+            "targetAssumption": "客户仍隐含假设销售是根本原因，即使他刚刚开始怀疑",
+            "attributionShifted": true,
+            "emergingHypothesis": "问题可能不是销售不够努力，而是别的什么",
+            "convergenceScore": 0.65,
+            "timestamp": "2026-06-08T15:23:53.138Z"
+          }
+        ],
+        "convergenceScore": 0.65,
+        "extractedAssumptions": [
+          "问题可能不是销售不够努力，而是别的什么"
+        ]
+      }
+    ],
+    "currentChainId": "CHAIN-1780932227242-7nclsy",
+    "emergingInsights": [
+      "问题可能不是销售不够努力，而是别的什么"
+    ],
+    "stopReason": "USER_CONFIRMED",
+    "hypothesis": {
+      "statement": "照你刚才说的——『问题可能不是销售不够努力，而是别的什么』——听起来你现在的想法是，你开始怀疑销售团队本身并不是业绩下滑的根本原因，而可能是产品在市场上的定位出了问题，导致即使销售更努力也难以拉动增长。我理解得对吗？",
+      "userPhrasing": "问题可能不是销售不够努力，而是别的什么",
+      "confirmedByUser": true,
+      "observableEvidence": [
+        "你最初认为销售团队不够努力是问题所在",
+        "你提到竞争对手在增长，但自己加大激励后效果不明显",
+        "你承认如果销售业绩翻倍，产品定位问题仍然可能存在"
+      ],
+      "verificationMethod": "观察并记录上述指标的变化",
+      "verificationPeriodDays": 7
+    },
+    "sevenDayValidationPlan": null,
+    "convergenceSummary": null,
+    "matchedCaseIds": [
+      "物流·20人·C001"
+    ],
+    "totalQuestions": 3,
+    "convergenceProgress": 65
+  }
+]

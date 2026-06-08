@@ -1,0 +1,38 @@
+{
+  "name": "organizational-mirror",
+  "version": "1.0.0",
+  "description": "AI consulting dialogue tool that helps business leaders discover their organization's real bottlenecks through strategic questioning",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "import": "node scripts/import.js",
+    "dev": "node --watch server.js",
+    "build": "node scripts/build-config.js",
+    "build:watch": "tsc --watch",
+    "test": "node tests/guardrails.test.js",
+    "test:guardrails": "node tests/guardrails.test.js",
+    "test:api": "node tests/api.test.js",
+    "test:all": "npm run test:guardrails && npm run test:api"
+  },
+  "keywords": [
+    "consulting",
+    "organizational-development",
+    "ai",
+    "dialogue"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

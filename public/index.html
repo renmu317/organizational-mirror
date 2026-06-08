@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <title>先见</title>
+  <!-- Google Fonts: Noto Serif SC + Noto Sans SC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=7">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <header class="header">
+      <h1 class="logo">先见</h1>
+      <p class="tagline">发现你还没看见的问题</p>
+      <!-- 自然语言进度提示（替代进度条） -->
+      <p class="session-hint" id="sessionHint"></p>
+    </header>
+
+    <!-- 对话区域 -->
+    <main class="chat-container" id="chatContainer">
+      <div class="chat-messages" id="chatMessages">
+        <!-- 消息将动态插入 -->
+      </div>
+    </main>
+
+    <!-- 选择题选项区域（L3难度时显示） -->
+    <div class="choice-options" id="choiceOptions" style="display: none;">
+      <div class="choice-grid" id="choiceGrid">
+        <!-- 动态生成选项按钮 -->
+      </div>
+      <div class="choice-other" id="choiceOther" style="display: none;">
+        <input type="text" id="otherInput" placeholder="请描述..." />
+        <button id="otherSubmit" class="btn-primary">提交</button>
+      </div>
+    </div>
+
+    <!-- 输入区域 -->
+    <footer class="input-container" id="inputContainer">
+      <div class="input-wrapper">
+        <textarea
+          id="userInput"
+          placeholder="在这里输入你的回答..."
+          rows="1"
+          autofocus
+        ></textarea>
+        <button id="sendBtn" class="send-btn" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
+          </svg>
+        </button>
+      </div>
+      <p class="input-hint">按 Enter 发送，Shift+Enter 换行</p>
+    </footer>
+
+    <!-- 发现卡（会话结束时显示）- 支持双路径 -->
+    <div class="discovery-card" id="discoveryCard" style="display: none;">
+      <button class="close-btn" id="closeCardBtn" aria-label="关闭">&times;</button>
+      <h2 id="cardTitle">你的发现</h2>
+      <div class="card-content" id="cardContent">
+        <!-- 动态生成，根据路径不同显示不同内容 -->
+      </div>
+      <div class="card-actions">
+        <button id="downloadCard" class="btn-secondary">保存截图</button>
+        <button id="restartBtn" class="btn-primary">开始新对话</button>
+      </div>
+    </div>
+
+    <!-- 加载状态 -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+      <div class="loading-spinner"></div>
+      <p>思考中...</p>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
