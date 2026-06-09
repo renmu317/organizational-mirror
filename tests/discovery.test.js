@@ -1,30 +1,30 @@
 /**
- * 发现式对话架构测试 (v3 双路径)
+ * 发现式对话架构测试 (v7 AI驱动版)
  *
- * 测试:
- * - 开场分流 (early/org)
- * - 难度降级 (L1/L2/L3)
- * - L3红线 (只有fact题可用选项)
- * - 收敛封顶
+ * v7 测试重点:
+ * - 确定性判断函数（模糊/过短/假设触发词/终结信号）
+ * - 系统提示词核心内容
+ * - 案例灵感构建
+ *
+ * 注意：v7 将 path/cognition_layer/causal_chain 等判断职责交给 AI，
+ *      JS 端只保留确定性判断，因此相关测试已简化。
  */
 
 const assert = require('assert');
 const {
   DISCOVERY_SYSTEM_PROMPT,
   VAGUE_SIGNALS,
-  EARLY_PATH_SIGNALS,
-  ORG_PATH_SIGNALS,
-  CURIOSITY_SIGNALS,
-  CAUSAL_SIGNALS,
-  STORY_SIGNALS,
-  detectPath,
+  ASSUMPTION_TRIGGERS,
+  RETROSPECTIVE_SIGNALS,
   detectVagueResponse,
   isResponseTooShort,
-  detectBehavioralSignal,
-  extractCausalChain,
+  shouldProbeAssumption,
+  detectRetrospective,
   extractMissingVariables,
   buildCaseHints,
-  parseConfirmationReply
+  parseConfirmationReply,
+  buildSystemPrompt,
+  getOpeningMessage
 } = require('../prompts/consultant');
 
 // ============================================================
@@ -54,429 +54,359 @@ function test(testName, fn) {
 // 运行测试
 // ============================================================
 console.log('='.repeat(60));
-console.log('v3 双路径架构测试');
+console.log('v7 AI驱动架构测试');
 console.log('='.repeat(60));
 
-// 测试1: 路径分流 - early
-describe('开场分流 - early路径', () => {
-  test('「没有客户」应判为early', () => {
-    const result = detectPath('商业验证阶段，没有客户');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('「还没上线」应判为early', () => {
-    const result = detectPath('产品还没上线');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('「刚开始」应判为early', () => {
-    const result = detectPath('我们刚开始做');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('「想法阶段」应判为early', () => {
-    const result = detectPath('目前还在想法阶段');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('「没验证」应判为early', () => {
-    const result = detectPath('还没有验证过需求');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('「没收入」应判为early', () => {
-    const result = detectPath('目前没有收入');
-    assert.strictEqual(result.path, 'early');
-  });
-
-  test('所有early信号词都应被检测', () => {
-    EARLY_PATH_SIGNALS.forEach(signal => {
-      const result = detectPath(`我们${signal}的`);
-      assert.strictEqual(
-        result.path,
-        'early',
-        `信号 "${signal}" 应判为early`
-      );
-    });
-  });
-});
-
-// 测试2: 路径分流 - org
-describe('开场分流 - org路径', () => {
-  test('「客户流失」应判为org', () => {
-    const result = detectPath('客户在流失');
-    assert.strictEqual(result.path, 'org');
-  });
-
-  test('「利润下滑」应判为org', () => {
-    const result = detectPath('利润一直在下滑');
-    assert.strictEqual(result.path, 'org');
-  });
-
-  test('「团队问题」应判为org', () => {
-    const result = detectPath('团队问题很严重');
-    assert.strictEqual(result.path, 'org');
-  });
-
-  test('「已在运营」应判为org', () => {
-    const result = detectPath('我们已在运营两年');
-    assert.strictEqual(result.path, 'org');
-  });
-
-  test('所有org信号词都应被检测', () => {
-    ORG_PATH_SIGNALS.forEach(signal => {
-      const result = detectPath(`我们${signal}`);
-      assert.strictEqual(
-        result.path,
-        'org',
-        `信号 "${signal}" 应判为org`
-      );
-    });
-  });
-});
-
-// 测试3: 路径分流 - unknown兜底
-describe('开场分流 - unknown兜底', () => {
-  test('模糊回复应判为unknown', () => {
-    const result = detectPath('有些问题');
-    assert.strictEqual(result.path, 'unknown');
-  });
-
-  test('无信号词应判为unknown', () => {
-    const result = detectPath('想聊聊公司的事');
-    assert.strictEqual(result.path, 'unknown');
-  });
-});
-
-// 测试4: 模糊信号检测
+// ============================================================
+// 测试: 模糊信号检测
+// ============================================================
 describe('模糊信号检测', () => {
   test('「不知道」应检测为模糊', () => {
-    assert.strictEqual(detectVagueResponse('我不知道'), true);
+    assert.strictEqual(detectVagueResponse('不知道怎么回答'), true);
   });
 
   test('「说不清」应检测为模糊', () => {
-    assert.strictEqual(detectVagueResponse('说不清楚'), true);
+    assert.strictEqual(detectVagueResponse('这个说不清'), true);
   });
 
   test('「不太确定」应检测为模糊', () => {
-    assert.strictEqual(detectVagueResponse('不太确定'), true);
+    assert.strictEqual(detectVagueResponse('不太确定这个数字'), true);
   });
 
   test('具体回复不应为模糊', () => {
-    assert.strictEqual(detectVagueResponse('销售下降了30%'), false);
+    assert.strictEqual(detectVagueResponse('去年三月份客户增加了30%'), false);
   });
 
   test('所有模糊信号词都应被检测', () => {
     VAGUE_SIGNALS.forEach(signal => {
-      assert.strictEqual(
-        detectVagueResponse(signal),
-        true,
-        `"${signal}" 应被检测为模糊`
-      );
+      const result = detectVagueResponse(`我${signal}`);
+      assert.strictEqual(result, true, `应检测到 "${signal}"`);
     });
   });
 });
 
-// 测试5: 过短回复检测
+// ============================================================
+// 测试: 过短回复检测
+// ============================================================
 describe('过短回复检测', () => {
   test('少于10字符应为过短', () => {
+    assert.strictEqual(isResponseTooShort('是'), true);
+    assert.strictEqual(isResponseTooShort('好的'), true);
     assert.strictEqual(isResponseTooShort('不知道'), true);
   });
 
   test('超过10字符不应为过短', () => {
-    assert.strictEqual(isResponseTooShort('销售额从去年Q3开始下降'), false);
+    assert.strictEqual(isResponseTooShort('去年三月份客户增加了30%'), false);
   });
 });
 
-// 测试6: 好奇心信号检测
-describe('好奇心信号检测', () => {
-  test('应检测到「我没想过」', () => {
-    const result = detectBehavioralSignal('这个我没想过，确实有意思', 'CURIOSITY');
-    assert.strictEqual(result.detected, true);
+// ============================================================
+// 测试: 假设触发词检测
+// ============================================================
+describe('假设触发词检测', () => {
+  test('应检测"必须"触发词', () => {
+    assert.strictEqual(shouldProbeAssumption('做产品必须这样'), true);
   });
 
-  test('应检测到「有意思」', () => {
-    const result = detectBehavioralSignal('有意思，这个角度我没考虑过', 'CURIOSITY');
-    assert.strictEqual(result.detected, true);
+  test('应检测"只能"触发词', () => {
+    assert.strictEqual(shouldProbeAssumption('只能先做再说'), true);
   });
 
-  test('应检测到「真的吗」', () => {
-    const result = detectBehavioralSignal('真的吗？我一直以为不是这样', 'CURIOSITY');
-    assert.strictEqual(result.detected, true);
+  test('应检测"没办法"触发词', () => {
+    assert.strictEqual(shouldProbeAssumption('没办法，市场就这样'), true);
   });
 
-  test('普通回答不应触发好奇心信号', () => {
-    const result = detectBehavioralSignal('你说的对，我同意这个观点', 'CURIOSITY');
-    assert.strictEqual(result.detected, false);
+  test('应检测"不可能"触发词', () => {
+    assert.strictEqual(shouldProbeAssumption('不可能换方向'), true);
   });
 
-  test('所有好奇心信号词都应被检测', () => {
-    CURIOSITY_SIGNALS.forEach(signal => {
-      const result = detectBehavioralSignal(`这个${signal}`, 'CURIOSITY');
-      assert.strictEqual(
-        result.detected,
-        true,
-        `信号 "${signal}" 应被检测到`
-      );
+  test('应检测"当然"触发词', () => {
+    assert.strictEqual(shouldProbeAssumption('当然要先做产品'), true);
+  });
+
+  test('普通话不应触发', () => {
+    assert.strictEqual(shouldProbeAssumption('我们去年做了一些调整'), false);
+  });
+
+  test('所有假设触发词都应被检测', () => {
+    ASSUMPTION_TRIGGERS.forEach(trigger => {
+      const result = shouldProbeAssumption(`${trigger}这样做`);
+      assert.strictEqual(result, true, `应检测到 "${trigger}"`);
     });
   });
 });
 
-// 测试7: 故事完成信号检测
-describe('故事完成信号检测', () => {
-  test('包含时间词应触发故事完成', () => {
-    const result = detectBehavioralSignal('从去年开始销售就一直在下降', 'STORY_COMPLETE');
-    assert.strictEqual(result.detected, true);
+// ============================================================
+// 测试: 终结信号检测（retrospective）
+// ============================================================
+describe('终结信号检测', () => {
+  test('「已经倒闭」应检测为终结', () => {
+    assert.strictEqual(detectRetrospective('公司已经倒闭了'), true);
   });
 
-  test('包含数字应触发故事完成', () => {
-    const result = detectBehavioralSignal('利润下降了30%', 'STORY_COMPLETE');
-    assert.strictEqual(result.detected, true);
+  test('「公司没了」应检测为终结', () => {
+    assert.strictEqual(detectRetrospective('那家公司没了'), true);
   });
 
-  test('包含具体事件应触发故事完成', () => {
-    const result = detectBehavioralSignal('上个月我们丢了最大的客户', 'STORY_COMPLETE');
-    assert.strictEqual(result.detected, true);
+  test('「当年」应检测为终结', () => {
+    assert.strictEqual(detectRetrospective('当年我们做了一个决定'), true);
   });
 
-  test('模糊描述不应触发故事完成', () => {
-    const result = detectBehavioralSignal('我们有一些问题', 'STORY_COMPLETE');
-    assert.strictEqual(result.detected, false);
-  });
-});
-
-// 测试8: 因果链完成信号检测
-describe('因果链信号检测', () => {
-  test('包含「导致」应触发因果链信号', () => {
-    const result = detectBehavioralSignal('销售下降导致了利润减少', 'CAUSAL_CHAIN_DONE');
-    assert.strictEqual(result.detected, true);
+  test('「破产」应检测为终结', () => {
+    assert.strictEqual(detectRetrospective('最后破产了'), true);
   });
 
-  test('包含「所以」应触发因果链信号', () => {
-    const result = detectBehavioralSignal('因为客户流失，所以收入下降了', 'CAUSAL_CHAIN_DONE');
-    assert.strictEqual(result.detected, true);
+  test('正常运营不应检测为终结', () => {
+    assert.strictEqual(detectRetrospective('客户在流失，利润下降'), false);
   });
 
-  test('无因果词不应触发', () => {
-    const result = detectBehavioralSignal('我们需要更多的销售', 'CAUSAL_CHAIN_DONE');
-    assert.strictEqual(result.detected, false);
+  test('所有终结信号词都应被检测', () => {
+    RETROSPECTIVE_SIGNALS.forEach(signal => {
+      const result = detectRetrospective(`${signal}`);
+      assert.strictEqual(result, true, `应检测到 "${signal}"`);
+    });
   });
 });
 
-// 测试9: 用户问题检测
-describe('用户问题检测', () => {
-  test('包含问号应检测到问题', () => {
-    const result = detectBehavioralSignal('那如果不是销售问题，会是什么？', 'USER_QUESTION');
-    assert.strictEqual(result.detected, true);
-  });
-
-  test('陈述句不应检测为问题', () => {
-    const result = detectBehavioralSignal('我认为这是个好想法', 'USER_QUESTION');
-    assert.strictEqual(result.detected, false);
-  });
-});
-
-// 测试10: 因果链提取
-describe('因果链提取', () => {
-  test('应提取用「导致」连接的因果链', () => {
-    const chain = extractCausalChain('销售下降导致利润下降，导致现金流紧张');
-    assert(chain.length >= 2, '应提取至少2个环节');
-    assert(chain.some(c => c.includes('销售')));
-  });
-
-  test('应提取用「因为...所以...」连接的因果链', () => {
-    const chain = extractCausalChain('因为客户流失，所以收入减少了');
-    assert(chain.length >= 2, '应提取至少2个环节');
-  });
-
-  test('无因果关系的文本应返回空数组', () => {
-    const chain = extractCausalChain('我们公司有一些问题');
-    assert.strictEqual(chain.length, 0);
-  });
-});
-
-// 测试11: 缺失变量提取
+// ============================================================
+// 测试: 缺失变量提取
+// ============================================================
 describe('缺失变量提取', () => {
   test('应从定价相关案例中提取定价策略', () => {
-    const caseData = {
-      initial_explanation: '销售不好',
-      real_bottleneck: '定价策略有问题'
-    };
-    const vars = extractMissingVariables(caseData);
-    assert(vars.includes('定价策略'));
+    const variables = extractMissingVariables({
+      real_bottleneck: '定价策略不合理',
+      initial_explanation: '销售不够努力'
+    });
+    assert(variables.includes('定价策略'), '应包含定价策略');
   });
 
   test('应从决策相关案例中提取决策周期', () => {
-    const caseData = {
-      initial_explanation: '执行不力',
-      real_bottleneck: '决策周期太长'
-    };
-    const vars = extractMissingVariables(caseData);
-    assert(vars.includes('决策周期'));
+    const variables = extractMissingVariables({
+      real_bottleneck: '决策周期太长',
+      initial_explanation: '销售不够'
+    });
+    assert(variables.includes('决策周期'), '应包含决策周期');
   });
 
   test('应从现金流相关案例中提取现金流结构', () => {
-    const caseData = {
-      initial_explanation: '利润下降',
-      real_bottleneck: '现金流结构问题'
-    };
-    const vars = extractMissingVariables(caseData);
-    assert(vars.includes('现金流结构'));
+    const variables = extractMissingVariables({
+      real_bottleneck: '现金流紧张导致运营困难',
+      initial_explanation: '销量不够'
+    });
+    assert(variables.includes('现金流结构'), '应包含现金流结构');
   });
 
   test('无法提取时应返回通用变量', () => {
-    const caseData = {
-      initial_explanation: 'xxx',
-      real_bottleneck: 'yyy'
-    };
-    const vars = extractMissingVariables(caseData);
-    assert(vars.length > 0, '应至少返回一个变量');
+    const variables = extractMissingVariables({
+      real_bottleneck: '',
+      initial_explanation: ''
+    });
+    assert(variables.length > 0, '应返回通用变量');
   });
 });
 
-// 测试12: 确认回复解析
-describe('确认回复解析', () => {
-  test('应识别肯定确认', () => {
-    const confirmations = ['是', '对', '没错', '是的', '对的', '确实'];
-    confirmations.forEach(reply => {
-      const result = parseConfirmationReply(reply);
-      assert.strictEqual(
-        result.isConfirmation,
-        true,
-        `"${reply}" 应被识别为确认`
-      );
-    });
-  });
-
-  test('应识别否定', () => {
-    const negations = ['不是', '不对', '不太对', '其实不是这样'];
-    negations.forEach(reply => {
-      const result = parseConfirmationReply(reply);
-      assert.strictEqual(
-        result.isNegation,
-        true,
-        `"${reply}" 应被识别为否定`
-      );
-    });
-  });
-
-  test('否定时应保留修正内容', () => {
-    const result = parseConfirmationReply('其实不是这样，我觉得是那样');
-    assert.strictEqual(result.isNegation, true);
-    assert(result.modification.includes('那样'));
-  });
-});
-
-// 测试13: 案例灵感构建
-describe('案例灵感构建（v3）', () => {
+// ============================================================
+// 测试: 案例灵感构建
+// ============================================================
+describe('案例灵感构建', () => {
   test('应只提供缺失变量，不提供答案', () => {
     const cases = [{
-      initial_explanation: '销售下降',
-      real_bottleneck: '定价策略问题',
-      insight_confidence: 'high'
+      initial_explanation: '销售不够努力',
+      real_bottleneck: '定价策略不合理'
     }];
-
     const hints = buildCaseHints(cases);
 
-    assert.strictEqual(hints.length, 1);
-    assert(hints[0].missing_variables, '应有缺失变量');
-    assert(Array.isArray(hints[0].missing_variables));
-    // 不应直接暴露 real_bottleneck 作为答案
-    assert(!hints[0].real_bottleneck, '不应直接暴露答案');
+    assert(hints.length > 0, '应生成灵感');
+    assert(hints[0].missing_variables, '应包含缺失变量');
+    assert(!hints[0].answer, '不应包含直接答案');
   });
 
   test('应提取认知缺口', () => {
     const cases = [{
-      initial_explanation: '市场不好',
-      real_bottleneck: '内部流程问题'
+      initial_explanation: '团队执行力差',
+      real_bottleneck: '战略方向错误'
     }];
-
     const hints = buildCaseHints(cases);
 
-    assert(hints[0].cognitive_gap, '应有认知缺口');
-    assert(hints[0].cognitive_gap.includes('市场不好'));
-    assert(hints[0].cognitive_gap.includes('内部流程问题'));
+    assert(hints[0].cognitive_gap, '应包含认知缺口');
+    assert(hints[0].cognitive_gap.includes('团队执行力差'), '缺口应包含初始解释');
+    assert(hints[0].cognitive_gap.includes('战略方向错误'), '缺口应包含真实瓶颈');
   });
 });
 
-// 测试14: 禁用词检测
-describe('禁用词', () => {
-  const FORBIDDEN_WORDS = [
-    '诊断', '专家', '建议', '策略', '方案', '解决方案',
-    '你错了', '你应该'
-  ];
+// ============================================================
+// 测试: 确认回复解析
+// ============================================================
+describe('确认回复解析', () => {
+  test('应识别肯定确认', () => {
+    const result = parseConfirmationReply('是的，我同意');
+    assert.strictEqual(result.isConfirmation, true);
+    assert.strictEqual(result.isNegation, false);
+  });
 
-  test('系统提示词中包含禁用词列表', () => {
-    FORBIDDEN_WORDS.forEach(word => {
-      assert(
-        DISCOVERY_SYSTEM_PROMPT.includes(word),
-        `禁用词 "${word}" 应该在系统提示词的禁用列表中`
-      );
-    });
+  test('应识别否定', () => {
+    const result = parseConfirmationReply('不是这样的，其实...');
+    assert.strictEqual(result.isNegation, true);
+    assert.strictEqual(result.isConfirmation, false);
+  });
+
+  test('否定时应保留修正内容', () => {
+    const input = '不对，应该是市场变化';
+    const result = parseConfirmationReply(input);
+    assert.strictEqual(result.modification, input);
   });
 });
 
-// 测试15: 双路径阶段定义
-describe('双路径阶段定义', () => {
-  test('系统提示词应包含early路径', () => {
-    assert(DISCOVERY_SYSTEM_PROMPT.includes('early'), '应包含early路径');
+// ============================================================
+// 测试: 系统提示词核心内容
+// ============================================================
+describe('系统提示词核心内容', () => {
+  test('应包含禁用词列表', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('绝对禁止的词汇'), '应包含禁用词标题');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('诊断'), '应列出诊断');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('你应该'), '应列出你应该');
   });
 
-  test('系统提示词应包含org路径', () => {
-    assert(DISCOVERY_SYSTEM_PROMPT.includes('org'), '应包含org路径');
+  test('应包含唯一主线', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('唯一主线'), '应包含唯一主线');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('世界规则'), '应包含世界规则');
   });
 
-  test('系统提示词应包含E1-E4阶段', () => {
-    ['E1', 'E2', 'E3', 'E4'].forEach(stage => {
-      assert(DISCOVERY_SYSTEM_PROMPT.includes(stage), `应包含 ${stage}`);
-    });
+  test('应包含开场分流规则', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('开场分流'), '应包含开场分流');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('early'), '应包含early');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('org'), '应包含org');
   });
 
-  test('系统提示词应包含Stage 1-6', () => {
-    for (let i = 1; i <= 6; i++) {
-      assert(DISCOVERY_SYSTEM_PROMPT.includes(`Stage ${i}`), `应包含 Stage ${i}`);
-    }
-  });
-});
-
-// 测试16: L3红线规则
-describe('L3红线规则', () => {
-  test('系统提示词应包含question_kind定义', () => {
-    assert(DISCOVERY_SYSTEM_PROMPT.includes('question_kind'), '应包含question_kind');
+  test('应包含六层认知链', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('六层'), '应包含六层');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('result'), '应包含result');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('rule'), '应包含rule');
   });
 
-  test('系统提示词应包含fact/attribution/definition', () => {
+  test('应包含三条铁律', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('三条铁律'), '应包含三条铁律');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('行动答案'), '应包含行动答案');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('反向追问'), '应包含反向追问');
+  });
+
+  test('应包含 actionable vs retrospective 分支', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('actionable'), '应包含actionable');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('retrospective'), '应包含retrospective');
+  });
+
+  test('应包含 L3 红线规则', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('L3 红线'), '应包含L3红线');
     assert(DISCOVERY_SYSTEM_PROMPT.includes('fact'), '应包含fact');
     assert(DISCOVERY_SYSTEM_PROMPT.includes('attribution'), '应包含attribution');
     assert(DISCOVERY_SYSTEM_PROMPT.includes('definition'), '应包含definition');
   });
 
-  test('系统提示词应说明只有fact题可用L3选项', () => {
-    assert(
-      DISCOVERY_SYSTEM_PROMPT.includes('fact') &&
-      DISCOVERY_SYSTEM_PROMPT.includes('L3'),
-      '应说明L3规则'
-    );
+  test('应包含三级提示机制', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('三级提示'), '应包含三级提示');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('L1'), '应包含L1');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('L2'), '应包含L2');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('L3'), '应包含L3');
+  });
+
+  test('应包含软上限而非强制收尾', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('软上限'), '应包含软上限');
+    // 注意：提示词中有"没有...必须出实验卡...这种硬指令"，是否定语境
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('没有'), '应明确说明没有强制指令');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('硬指令'), '应提到硬指令');
+  });
+
+  test('应包含 JSON 输出格式', () => {
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('cognition_layer'), '应包含cognition_layer');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('world_rule'), '应包含world_rule');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('session_complete'), '应包含session_complete');
+    assert(DISCOVERY_SYSTEM_PROMPT.includes('branch'), '应包含branch');
   });
 });
 
-// 测试17: 撞击式提问规则
-describe('撞击式提问', () => {
-  test('系统提示词应禁止空问法', () => {
-    assert(
-      DISCOVERY_SYSTEM_PROMPT.includes('禁止') ||
-      DISCOVERY_SYSTEM_PROMPT.includes('空问'),
-      '应包含空问法禁止规则'
-    );
+// ============================================================
+// 测试: 开场白
+// ============================================================
+describe('开场白', () => {
+  test('应返回正确格式', () => {
+    const opening = getOpeningMessage();
+    assert(opening.reply, '应包含reply');
+    assert.strictEqual(opening.path, 'unknown');
+    assert.strictEqual(opening.session_complete, false);
+    assert.strictEqual(opening.branch, null);
   });
 
-  test('系统提示词应要求撞击式提问', () => {
-    assert(
-      DISCOVERY_SYSTEM_PROMPT.includes('撞击') ||
-      DISCOVERY_SYSTEM_PROMPT.includes('涨') ||
-      DISCOVERY_SYSTEM_PROMPT.includes('跌'),
-      '应包含撞击式提问要求'
-    );
+  test('开场白应包含核心问题', () => {
+    const opening = getOpeningMessage();
+    assert(opening.reply.includes('挑战'), '应询问挑战');
+  });
+});
+
+// ============================================================
+// 测试: buildSystemPrompt
+// ============================================================
+describe('buildSystemPrompt', () => {
+  test('无状态时应返回基础提示词', () => {
+    const prompt = buildSystemPrompt([], null);
+    assert(prompt.includes('唯一主线'), '应包含核心内容');
+  });
+
+  test('有状态时应注入状态信息', () => {
+    const state = {
+      path: 'org',
+      branch: 'actionable',
+      stage: 2,
+      total_turns: 5,
+      difficulty: 'L1',
+      causalChain: ['A', 'B'],
+      cognition_layer: 'decision',
+      deepest_layer_reached: 'assumption',
+      shallow_streak: 1,
+      world_rule: ''
+    };
+    const prompt = buildSystemPrompt([], state);
+    assert(prompt.includes('当前会话状态'), '应包含状态标题');
+    assert(prompt.includes('org'), '应包含路径');
+    assert(prompt.includes('A → B'), '应包含因果链');
+  });
+
+  test('retrospective 分支应添加提醒', () => {
+    const state = {
+      path: 'org',
+      branch: 'retrospective',
+      stage: 3,
+      total_turns: 8
+    };
+    const prompt = buildSystemPrompt([], state);
+    assert(prompt.includes('仅复盘'), '应包含仅复盘提醒');
+    assert(prompt.includes('不要出实验卡'), '应包含不出实验卡提醒');
+  });
+
+  test('浅层连续应添加提示', () => {
+    const state = {
+      path: 'org',
+      shallow_streak: 3
+    };
+    const prompt = buildSystemPrompt([], state);
+    assert(prompt.includes('连续'), '应包含连续浅层提示');
+  });
+
+  test('案例灵感应仅在 org Stage3+ 注入', () => {
+    const cases = [{
+      initial_explanation: '销售问题',
+      real_bottleneck: '定价问题'
+    }];
+    const hints = buildCaseHints(cases);
+
+    // Stage 2 不应注入
+    const state2 = { path: 'org', stage: 2 };
+    const prompt2 = buildSystemPrompt(hints, state2);
+    assert(!prompt2.includes('缺失变量灵感'), 'Stage2 不应包含灵感');
+
+    // Stage 3 应注入
+    const state3 = { path: 'org', stage: 3 };
+    const prompt3 = buildSystemPrompt(hints, state3);
+    assert(prompt3.includes('缺失变量灵感'), 'Stage3 应包含灵感');
   });
 });
 
@@ -491,7 +421,9 @@ if (results.failed > 0) {
   results.errors.forEach(e => {
     console.log(`  - ${e.testName}: ${e.error}`);
   });
-  process.exit(1);
 }
 
 console.log('='.repeat(60));
+
+// 退出码
+process.exit(results.failed > 0 ? 1 : 0);

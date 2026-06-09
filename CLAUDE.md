@@ -4,7 +4,31 @@
 
 一个让企业领导者**自己发现**组织真实瓶颈的 AI 咨询对话工具。
 
-## v3.0 双路径架构 (2026-06-08 更新)
+## v8.0 全路径硬收尾 (2026-06-08 更新)
+
+### v8 核心改进
+
+| 维度 | 旧（v7 软上限） | 新（v8 硬收尾） |
+|------|----------------|----------------|
+| **收尾逻辑** | 依赖 AI 的 session_complete | 服务端多条件兜底 |
+| **early 路径** | 约 6 轮软上限 | 成功定义+实验行动 或 8轮硬上限 |
+| **org 路径** | 挖到 world_rule 收尾 | world_rule+1轮 或 18轮硬上限 |
+| **用户控制** | 无 | 常驻"结束并生成卡片"按钮 |
+| **防循环** | 无 | early 路径铁律防无限质疑 |
+
+### 六种收尾条件（任一触发即收尾）
+
+| 条件 | 说明 |
+|------|------|
+| `ai_complete` | AI 返回 session_complete=true |
+| `retrospective_done` | retrospective 分支 + 已挖到 world_rule |
+| `actionable_done` | actionable 分支 + world_rule + 又问了1轮 |
+| `early_ready` | early 路径 + 有成功定义 + 有实验行动 |
+| `early_cap` | early 路径 ≥8 轮硬上限 |
+| `org_cap` | org 路径 ≥18 轮硬上限 |
+| `user_requested` | 用户点击"结束并生成卡片" |
+
+## v3.0 双路径架构
 
 ### 核心改进
 
@@ -201,4 +225,5 @@ curl -X POST http://localhost:3000/api/respond -H "Content-Type: application/jso
 
 *创建日期: 2024-01*
 *v3.0 更新: 2026-06-08*
-*理论底座: 开场分流 × 双路径 × 撞击式提问 × 收敛封顶*
+*v8.0 更新: 2026-06-08*
+*理论底座: 开场分流 × 双路径 × 撞击式提问 × 全路径硬收尾*

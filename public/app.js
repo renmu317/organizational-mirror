@@ -20,7 +20,13 @@ class OrganizationalMirror {
     this.currentDifficulty = 'L1';
     this.currentPath = 'unknown';
 
+    // 报告数据（用于下载）
+    this.lastDiscoveryOutput = null;
+    this.lastPath = null;
+
     // DOM 元素
+    this.appContainer = document.getElementById('appContainer');
+    this.welcomeHero = document.getElementById('welcomeHero');
     this.chatMessages = document.getElementById('chatMessages');
     this.chatContainer = document.getElementById('chatContainer');
     this.userInput = document.getElementById('userInput');
@@ -34,6 +40,7 @@ class OrganizationalMirror {
     this.choiceOther = document.getElementById('choiceOther');
     this.otherInput = document.getElementById('otherInput');
     this.otherSubmit = document.getElementById('otherSubmit');
+    this.endSessionBtn = document.getElementById('endSessionBtn'); // 【v8】结束按钮
 
     // 绑定事件
     this.bindEvents();
@@ -66,7 +73,7 @@ class OrganizationalMirror {
 
     // 下载按钮
     document.getElementById('downloadCard')?.addEventListener('click', () => {
-      alert('请使用系统截图功能保存发现卡\n\nMac: Cmd+Shift+4\nWindows: Win+Shift+S');
+      this.downloadReport();
     });
 
     // 关闭发现卡按钮
@@ -91,11 +98,16 @@ class OrganizationalMirror {
         }
       }
     });
+
+    // 【v8】结束会话按钮
+    this.endSessionBtn?.addEventListener('click', () => {
+      this.endSession();
+    });
   }
 
   async init() {
-    // 获取开场白
-    await this.getAIResponse();
+    // 不自动获取开场白，等待用户先输入
+    // 用户输入后再开始对话
   }
 
   autoResize() {
@@ -202,6 +214,11 @@ class OrganizationalMirror {
   }
 
   addMessage(content, role, isHighlight = false) {
+    // 添加第一条消息时切换到对话模式
+    if (!this.appContainer.classList.contains('has-messages')) {
+      this.appContainer.classList.add('has-messages');
+    }
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
 
@@ -278,7 +295,7 @@ class OrganizationalMirror {
     await this.getAIResponse();
   }
 
-  async getAIResponse() {
+  async getAIResponse(endRequested = false) {
     this.showLoading();
 
     try {
@@ -297,7 +314,8 @@ class OrganizationalMirror {
         headers,
         body: JSON.stringify({
           history: this.history,
-          sessionId: this.sessionId
+          sessionId: this.sessionId,
+          endRequested: endRequested // 【v8】用户请求结束
         })
       });
 
@@ -330,6 +348,9 @@ class OrganizationalMirror {
         this.updateSessionHint(data.session_hint);
       }
 
+      // 【v8】显示/隐藏结束按钮（有消息且未完成时显示）
+      this.updateEndSessionButton(data.session_complete);
+
       // 添加AI消息
       const isHighlight = data.curiosity_triggered;
       this.addMessage(data.reply, 'ai', isHighlight);
@@ -344,7 +365,12 @@ class OrganizationalMirror {
 
       // 检查会话是否完成
       if (data.session_complete && data.discovery_output) {
-        this.completeSession(data.discovery_output, data.path);
+        // 【v8】记录收尾原因
+        if (data.close_reason) {
+          console.log(`[v8] Session closed: ${data.close_reason}`);
+        }
+        // 【v6】传递深度指标
+        this.completeSession(data.discovery_output, data.path, data.layer_sequence, data.depth_metrics);
       }
 
     } catch (error) {
@@ -354,12 +380,39 @@ class OrganizationalMirror {
     }
   }
 
-  async completeSession(discoveryOutput, path) {
+  /**
+   * 【v8】更新结束按钮显示状态
+   */
+  updateEndSessionButton(sessionComplete) {
+    if (this.endSessionBtn) {
+      // 有对话且未完成时显示
+      const shouldShow = this.history.length >= 2 && !sessionComplete && !this.sessionComplete;
+      this.endSessionBtn.style.display = shouldShow ? 'block' : 'none';
+    }
+  }
+
+  /**
+   * 【v8】用户主动结束会话
+   */
+  async endSession() {
+    if (this.isLoading || this.sessionComplete) return;
+
+    // 禁用按钮防止重复点击
+    if (this.endSessionBtn) {
+      this.endSessionBtn.disabled = true;
+    }
+
+    // 发送带 endRequested 标记的请求
+    await this.getAIResponse(true);
+  }
+
+  async completeSession(discoveryOutput, path, layerSequence, depthMetrics) {
     this.sessionComplete = true;
 
-    // 隐藏输入区域
+    // 隐藏输入区域和结束按钮
     this.inputContainer.classList.add('hidden');
     this.hideChoiceOptions();
+    this.updateEndSessionButton(true); // 【v8】隐藏结束按钮
 
     // 保存会话（Edge Function 已自动保存，此处为本地兼容）
     if (!window.CONFIG?.SUPABASE_URL) {
@@ -373,7 +426,10 @@ class OrganizationalMirror {
             history: this.history,
             discoveryOutput,
             path,
-            sessionId: this.sessionId
+            sessionId: this.sessionId,
+            // 【v6】深度指标
+            layer_sequence: layerSequence || [],
+            depth_metrics: depthMetrics || null
           })
         });
       } catch (error) {
@@ -393,6 +449,10 @@ class OrganizationalMirror {
    * 显示发现卡 - 双路径支持
    */
   showDiscoveryCard(output, path) {
+    // 保存报告数据供下载使用
+    this.lastDiscoveryOutput = output;
+    this.lastPath = path;
+
     const cardContent = document.getElementById('cardContent');
     const cardTitle = document.getElementById('cardTitle');
 
@@ -547,6 +607,128 @@ class OrganizationalMirror {
     }
   }
 
+  /**
+   * 生成 Markdown 格式报告
+   */
+  generateReportMarkdown(output, path) {
+    const date = new Date().toLocaleDateString('zh-CN');
+    let markdown = '';
+
+    if (path === 'early') {
+      markdown = `# 验证计划报告
+
+> 生成日期：${date}
+
+## 当前想法/挑战
+
+${output.current_idea || output.current_problem || '—'}
+
+## 核心假设
+
+${output.core_assumption || '—'}
+
+## 被撬动的假设
+
+${output.challenged_assumption || '—'}
+
+## 你的预测
+
+${output.prediction || '—'}
+
+## 验证成功定义
+
+${output.success_definition || '—'}
+
+## 更新后的问题定义
+
+${output.redefined_problem || '—'}
+
+---
+
+## 7天验证实验
+
+| 项目 | 内容 |
+|------|------|
+| **最小验证** | ${output.seven_day_experiment?.experiment || '—'} |
+| **成功标准** | ${output.seven_day_experiment?.success_criteria || '—'} |
+| **时间** | ${output.seven_day_experiment?.time_horizon || '7天'} |
+| **负责人** | ${output.seven_day_experiment?.owner || '你'} |
+`;
+    } else {
+      // org 路径
+      const causalChain = output.world_model?.causal_chain?.join(' → ') || '—';
+      const hiddenAssumptions = output.world_model?.hidden_assumptions?.join('；') || '—';
+      const missingVariables = output.missing_variables?.join('、') || '—';
+      const curiosityQuestions = output.curiosity_questions?.join('；') || '—';
+
+      markdown = `# 发现报告
+
+> 生成日期：${date}
+
+## 当前问题定义
+
+${output.current_problem || '—'}
+
+## 当前世界模型（因果链）
+
+${causalChain}
+
+## 隐藏假设
+
+${hiddenAssumptions}
+
+## 可能缺失的变量
+
+${missingVariables}
+
+## 好奇问题
+
+${curiosityQuestions}
+
+## 更新后的问题定义
+
+${output.redefined_problem || '—'}
+
+---
+
+## 7天实验
+
+| 项目 | 内容 |
+|------|------|
+| **假设** | ${output.seven_day_experiment?.hypothesis || '—'} |
+| **实验** | ${output.seven_day_experiment?.experiment || '—'} |
+| **成功标准** | ${output.seven_day_experiment?.success_criteria || '—'} |
+| **时间** | ${output.seven_day_experiment?.time_horizon || '—'} |
+| **负责人** | ${output.seven_day_experiment?.owner || '—'} |
+`;
+    }
+
+    return markdown;
+  }
+
+  /**
+   * 下载报告
+   */
+  downloadReport() {
+    if (!this.lastDiscoveryOutput) {
+      alert('没有可下载的报告');
+      return;
+    }
+
+    const markdown = this.generateReportMarkdown(this.lastDiscoveryOutput, this.lastPath);
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = this.lastPath === 'early' ? '验证计划报告.md' : '发现报告.md';
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   restart() {
     // 重置状态
     this.history = [];
@@ -555,17 +737,19 @@ class OrganizationalMirror {
     this.pendingOptions = null;
     this.currentDifficulty = 'L1';
     this.currentPath = 'unknown';
+    this.lastDiscoveryOutput = null;
+    this.lastPath = null;
 
     // 重置UI
     this.chatMessages.innerHTML = '';
+    this.appContainer.classList.remove('has-messages'); // 恢复欢迎界面
     this.inputContainer.classList.remove('hidden');
     this.inputContainer.style.display = 'block';
     this.hideDiscoveryCard();
     this.hideChoiceOptions();
     this.updateSessionHint(null);
 
-    // 获取新的开场白
-    this.init();
+    // 不自动获取开场白，等待用户输入
   }
 }
 
