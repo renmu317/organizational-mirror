@@ -574,7 +574,7 @@
 
     // 渲染总体统计
     function renderOverallStats(data) {
-      const { org, early, total_sessions } = data;
+      const { org, early, total_sessions, unclassified } = data;
       document.getElementById('overallStats').innerHTML = `
         <div class="metrics-grid" style="margin-bottom: 2rem;">
           <div class="metric-card">
@@ -582,23 +582,29 @@
             <span class="metric-label">Total Sessions</span>
           </div>
           <div class="metric-card">
-            <span class="metric-value">${org?.sample_size || 0}</span>
+            <span class="metric-value">${org?.total_count || org?.sample_size || 0}</span>
             <span class="metric-label">Org Path</span>
           </div>
           <div class="metric-card">
             <span class="metric-value">${early?.sample_size || 0}</span>
             <span class="metric-label">Early Path</span>
           </div>
+          ${unclassified > 0 ? `
+          <div class="metric-card" style="border-color: var(--warning);">
+            <span class="metric-value" style="color: var(--warning);">${unclassified}</span>
+            <span class="metric-label">Unclassified</span>
+          </div>
+          ` : ''}
           <div class="metric-card">
             <span class="metric-value">${org?.avg_depth || '--'}</span>
-            <span class="metric-label">Avg Depth (${org?.avg_depth_label || ''})</span>
+            <span class="metric-label">Avg Depth</span>
+          </div>
+          <div class="metric-card" style="border-color: var(--accent);">
+            <span class="metric-value" style="color: var(--accent-light);">${org?.broke_assumption_rate || '--'}</span>
+            <span class="metric-label">Broke Assumption ⭐</span>
           </div>
           <div class="metric-card">
-            <span class="metric-value">${org?.broke_assumption_rate || '--'}</span>
-            <span class="metric-label">Broke Assumption</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-value">${org?.reached_rule_rate || '--'}</span>
+            <span class="metric-value" style="color: var(--warning);">${org?.reached_rule_rate || '--'}</span>
             <span class="metric-label">Reached Rule</span>
           </div>
         </div>
@@ -897,29 +903,89 @@
 
     // 渲染统计
     function renderStats(data) {
-      const { org, early } = data;
+      const { org, early, total_sessions, unclassified } = data;
       const hasDepthData = org.sample_size > 0;
+      const depthLabels = org.depth_distribution_labels || {
+        1: 'Result', 2: 'Behavior', 3: 'Decision',
+        4: 'Assumption', 5: 'Environment', 6: 'Rule'
+      };
+
+      // 计算柱状图最大值
+      const dist = org.depth_distribution || {};
+      const maxCount = Math.max(...Object.values(dist), 1);
 
       document.getElementById('statsContainer').innerHTML = `
+        ${org.warning ? `<p style="color: var(--warning); font-size: 0.875rem; margin-bottom: 1rem;">⚠️ ${org.warning}</p>` : ''}
+
+        <h3 style="margin-bottom: 1rem; color: var(--text-muted);">Overview</h3>
         <div class="metrics-grid">
           <div class="metric-card">
+            <span class="metric-value">${total_sessions || 0}</span>
+            <span class="metric-label">Total Sessions</span>
+          </div>
+          <div class="metric-card">
             <span class="metric-value">${org.total_count || org.sample_size || 0}</span>
-            <span class="metric-label">Org Sessions</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-value">${org.avg_depth != null ? org.avg_depth : '--'}</span>
-            <span class="metric-label">Avg Depth</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-value">${org.broke_assumption_rate || '--'}</span>
-            <span class="metric-label">Assumption Rate</span>
+            <span class="metric-label">Org Path</span>
           </div>
           <div class="metric-card">
             <span class="metric-value">${early.sample_size || 0}</span>
-            <span class="metric-label">Early Sessions</span>
+            <span class="metric-label">Early Path</span>
+          </div>
+          <div class="metric-card" style="${unclassified > 0 ? 'border-color: var(--warning);' : ''}">
+            <span class="metric-value" style="${unclassified > 0 ? 'color: var(--warning);' : ''}">${unclassified || 0}</span>
+            <span class="metric-label">Unclassified</span>
           </div>
         </div>
-        ${org.warning ? `<p style="color: var(--warning); font-size: 0.875rem; margin-bottom: 1rem;">${org.warning}</p>` : ''}
+
+        <h3 style="margin: 2rem 0 1rem; color: var(--text-muted);">Org Path Depth Metrics</h3>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-value">${org.avg_depth != null ? org.avg_depth : '--'}</span>
+            <span class="metric-label">Avg Depth (${org.avg_depth_label || ''})</span>
+          </div>
+          <div class="metric-card" style="border-color: var(--accent);">
+            <span class="metric-value" style="color: var(--accent-light);">${org.broke_assumption_rate || '--'}</span>
+            <span class="metric-label">Broke Assumption ⭐</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value" style="color: var(--warning);">${org.reached_rule_rate || '--'}</span>
+            <span class="metric-label">Reached Rule</span>
+          </div>
+        </div>
+
+        <h3 style="margin: 2rem 0 1rem; color: var(--text-muted);">Depth Distribution</h3>
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; height: 120px; gap: 0.5rem;">
+            ${[1,2,3,4,5,6].map(d => {
+              const count = dist[d] || 0;
+              const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
+              const barColor = d >= 4 ? 'var(--accent)' : 'var(--text-muted)';
+              return `
+                <div style="flex: 1; text-align: center;">
+                  <div style="height: ${height}px; background: ${barColor}; border-radius: 4px 4px 0 0; min-height: ${count > 0 ? 4 : 0}px; margin-bottom: 0.5rem;"></div>
+                  <div style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary);">${count}</div>
+                  <div style="font-size: 0.625rem; color: var(--text-muted); line-height: 1.2;">${depthLabels[d] || 'L'+d}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <h3 style="margin: 2rem 0 1rem; color: var(--text-muted);">Early Path Metrics</h3>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-value">${early.sample_size || 0}</span>
+            <span class="metric-label">Total Early Sessions</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${early.qualified_rate || '--'}</span>
+            <span class="metric-label">Qualified Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${early.qualified_count || 0}</span>
+            <span class="metric-label">With Experiment</span>
+          </div>
+        </div>
       `;
     }
 

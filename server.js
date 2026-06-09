@@ -1089,6 +1089,9 @@ app.get('/api/stats/depth', async (req, res) => {
   );
 
   const earlySessions = sessions.filter(s => s.path === 'early');
+
+  // 未分类会话（path 为空或 unknown）
+  const unclassifiedSessions = sessions.filter(s => !s.path || s.path === 'unknown');
   const earlyWithExperiment = earlySessions.filter(s =>
     s.discovery_output?.seven_day_experiment?.experiment &&
     s.discovery_output.seven_day_experiment.experiment !== '待设计的最小实验'
@@ -1104,6 +1107,7 @@ app.get('/api/stats/depth', async (req, res) => {
     return res.json({
       source,
       total_sessions: sessions.length,
+      unclassified: unclassifiedSessions.length,
       org: {
         sample_size: 0,
         total_count: allOrgSessions.length,  // 总 org 会话数
@@ -1143,6 +1147,7 @@ app.get('/api/stats/depth', async (req, res) => {
   res.json({
     source,
     total_sessions: sessions.length,
+    unclassified: unclassifiedSessions.length,
     org: {
       sample_size: orgSessionsWithDepth.length,
       total_count: allOrgSessions.length,
