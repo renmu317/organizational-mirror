@@ -692,6 +692,7 @@ class OrganizationalMirror {
         body: JSON.stringify({
           history: this.history,
           sessionId: this.sessionId,
+          userId: this.currentUser?.id || null, // 【v9】传递用户 ID
           endRequested: endRequested // 【v8】用户请求结束
         })
       });

@@ -628,7 +628,7 @@ function enforceL3Redline(parsed) {
 // ============================================================
 app.post('/api/respond', async (req, res) => {
   try {
-    const { history, sessionId, endRequested } = req.body; // 【v8】新增 endRequested
+    const { history, sessionId, userId, endRequested } = req.body; // 【v8】新增 endRequested, 【v9】新增 userId
     const sid = sessionId || `S${Date.now()}`;
 
     // 新对话返回开场白
@@ -803,6 +803,42 @@ app.post('/api/respond', async (req, res) => {
       }
 
       sessionStates.delete(sid);
+    }
+
+    // 【v9】实时保存/更新会话到 Supabase（每轮都保存，确保有 user_id）
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY && userId) {
+      try {
+        // 生成会话标题（取第一条用户消息的前20字）
+        const firstUserMsg = history.find(m => m.role === 'user')?.content || '';
+        const title = firstUserMsg.slice(0, 20) + (firstUserMsg.length > 20 ? '...' : '');
+
+        // 使用 upsert 保存会话
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/sessions`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_SERVICE_KEY,
+              'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({
+              id: sid,
+              user_id: userId,
+              title: title,
+              path: state.path,
+              branch: state.branch,
+              transcript: history,
+              session_complete: shouldEnd,
+              discovery_output: shouldEnd ? response.discovery_output : null,
+              created_at: new Date().toISOString()
+            })
+          }
+        );
+      } catch (e) {
+        console.error('实时保存会话失败:', e.message);
+      }
     }
 
     res.json(response);
