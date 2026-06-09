@@ -539,8 +539,18 @@
           <button class="nav-tab active">Users</button>
           <button class="nav-tab" onclick="showStatsView()">Statistics</button>
         </nav>
+        <div id="overallStats"><div class="loading">Loading overall statistics...</div></div>
         <div id="usersContainer"><div class="loading">Loading users...</div></div>
       `;
+
+      // 加载总体统计
+      try {
+        const statsResponse = await fetch(`${API_BASE}/api/stats/depth`);
+        const statsData = await statsResponse.json();
+        renderOverallStats(statsData);
+      } catch (error) {
+        document.getElementById('overallStats').innerHTML = '';
+      }
 
       try {
         const response = await fetch(`${API_BASE}/api/admin/users`, {
@@ -562,8 +572,42 @@
       }
     }
 
+    // 渲染总体统计
+    function renderOverallStats(data) {
+      const { org, early, total_sessions } = data;
+      document.getElementById('overallStats').innerHTML = `
+        <div class="metrics-grid" style="margin-bottom: 2rem;">
+          <div class="metric-card">
+            <span class="metric-value">${total_sessions || 0}</span>
+            <span class="metric-label">Total Sessions</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${org?.sample_size || 0}</span>
+            <span class="metric-label">Org Path</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${early?.sample_size || 0}</span>
+            <span class="metric-label">Early Path</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${org?.avg_depth || '--'}</span>
+            <span class="metric-label">Avg Depth (${org?.avg_depth_label || ''})</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${org?.broke_assumption_rate || '--'}</span>
+            <span class="metric-label">Broke Assumption</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${org?.reached_rule_rate || '--'}</span>
+            <span class="metric-label">Reached Rule</span>
+          </div>
+        </div>
+      `;
+    }
+
     // 渲染用户列表
-    function renderUsers(users) {
+    async function renderUsers(users) {
+      // 先渲染基本卡片
       document.getElementById('usersContainer').innerHTML = `
         <div class="users-grid">
           ${users.map(user => {
@@ -572,10 +616,10 @@
             }) : 'Never';
 
             return `
-              <div class="user-card" onclick="showUserSessions('${user.id}', '${escapeHtml(user.name)}')">
+              <div class="user-card" id="user-card-${user.id}" onclick="showUserSessions('${user.id}', '${escapeHtml(user.name)}')">
                 <h3>${escapeHtml(user.name)}</h3>
                 <p class="company">${user.company ? escapeHtml(user.company) : 'No company'}</p>
-                <div class="user-stats">
+                <div class="user-stats" id="user-stats-${user.id}">
                   <div class="user-stat">
                     <div class="value">${user.session_count || 0}</div>
                     <div class="label">Sessions</div>
@@ -590,6 +634,36 @@
           }).join('')}
         </div>
       `;
+
+      // 异步加载每个用户的统计
+      for (const user of users) {
+        try {
+          const statsRes = await fetch(`${API_BASE}/api/admin/users/${user.id}/stats`, {
+            headers: { 'X-Admin-Password': adminPassword }
+          });
+          const stats = await statsRes.json();
+
+          const statsEl = document.getElementById(`user-stats-${user.id}`);
+          if (statsEl && stats) {
+            statsEl.innerHTML = `
+              <div class="user-stat">
+                <div class="value">${stats.total_sessions || 0}</div>
+                <div class="label">Sessions</div>
+              </div>
+              <div class="user-stat">
+                <div class="value">${stats.avg_depth || '--'}</div>
+                <div class="label">Avg Depth</div>
+              </div>
+              <div class="user-stat">
+                <div class="value">${stats.world_rule_count || 0}</div>
+                <div class="label">Rules Found</div>
+              </div>
+            `;
+          }
+        } catch (e) {
+          // 忽略错误，保持基本显示
+        }
+      }
     }
 
     // 用户会话列表
@@ -694,6 +768,37 @@
     function renderSessionDetail(session, userName) {
       const history = session.history || [];
       const discovery = session.discovery_output;
+      const depthMetrics = session.depth_metrics;
+
+      // 深度指标显示
+      let depthHtml = '';
+      if (depthMetrics || session.layer_sequence?.length > 0) {
+        const layerNames = { 1: 'Result', 2: 'Behavior', 3: 'Decision', 4: 'Assumption', 5: 'Environment', 6: 'Rule' };
+        const maxDepth = depthMetrics?.max_depth || 0;
+        const brokeAssumption = depthMetrics?.broke_assumption ? '✓' : '✗';
+        const reachedRule = depthMetrics?.reached_rule ? '✓' : '✗';
+
+        depthHtml = `
+          <div class="metrics-grid" style="margin-bottom: 1.5rem;">
+            <div class="metric-card" style="padding: 1rem;">
+              <span class="metric-value" style="font-size: 1.5rem;">${maxDepth}</span>
+              <span class="metric-label">Max Depth (${layerNames[maxDepth] || '--'})</span>
+            </div>
+            <div class="metric-card" style="padding: 1rem;">
+              <span class="metric-value" style="font-size: 1.5rem; color: ${depthMetrics?.broke_assumption ? 'var(--success)' : 'var(--text-muted)'};">${brokeAssumption}</span>
+              <span class="metric-label">Broke Assumption</span>
+            </div>
+            <div class="metric-card" style="padding: 1rem;">
+              <span class="metric-value" style="font-size: 1.5rem; color: ${depthMetrics?.reached_rule ? 'var(--warning)' : 'var(--text-muted)'};">${reachedRule}</span>
+              <span class="metric-label">Reached Rule</span>
+            </div>
+            <div class="metric-card" style="padding: 1rem;">
+              <span class="metric-value" style="font-size: 1.5rem;">${depthMetrics?.turns || history.filter(m => m.role === 'user').length}</span>
+              <span class="metric-label">Turns</span>
+            </div>
+          </div>
+        `;
+      }
 
       let transcriptHtml = history.map(msg => `
         <div class="transcript-message">
@@ -707,16 +812,28 @@
         discoveryHtml = `
           <div class="discovery-section">
             <h4>Discovery Card</h4>
-            ${discovery.current_problem ? `
+            ${discovery.current_problem || discovery.current_challenge ? `
               <div class="discovery-field">
-                <label>Problem</label>
-                <p>${escapeHtml(discovery.current_problem)}</p>
+                <label>Problem / Challenge</label>
+                <p>${escapeHtml(discovery.current_problem || discovery.current_challenge)}</p>
+              </div>
+            ` : ''}
+            ${discovery.core_assumption ? `
+              <div class="discovery-field">
+                <label>Core Assumption</label>
+                <p>${escapeHtml(discovery.core_assumption)}</p>
+              </div>
+            ` : ''}
+            ${discovery.challenged_assumption ? `
+              <div class="discovery-field">
+                <label>Challenged Assumption</label>
+                <p style="color: var(--accent-light);">${escapeHtml(discovery.challenged_assumption)}</p>
               </div>
             ` : ''}
             ${discovery.world_rule || session.world_rule ? `
               <div class="discovery-field">
                 <label>World Rule</label>
-                <p style="color: var(--warning);">${escapeHtml(discovery.world_rule || session.world_rule)}</p>
+                <p style="color: var(--warning); font-weight: 500;">${escapeHtml(discovery.world_rule || session.world_rule)}</p>
               </div>
             ` : ''}
             ${discovery.causal_chain && discovery.causal_chain.length > 0 ? `
@@ -725,10 +842,16 @@
                 <p>${discovery.causal_chain.map(c => escapeHtml(c)).join(' → ')}</p>
               </div>
             ` : ''}
+            ${discovery.success_definition ? `
+              <div class="discovery-field">
+                <label>Success Definition</label>
+                <p>${escapeHtml(discovery.success_definition)}</p>
+              </div>
+            ` : ''}
             ${discovery.seven_day_experiment ? `
               <div class="discovery-field">
                 <label>7-Day Experiment</label>
-                <p>${escapeHtml(discovery.seven_day_experiment.experiment || 'N/A')}</p>
+                <p>${escapeHtml(typeof discovery.seven_day_experiment === 'string' ? discovery.seven_day_experiment : discovery.seven_day_experiment.experiment || 'N/A')}</p>
               </div>
             ` : ''}
           </div>
@@ -740,9 +863,10 @@
           <h3>
             <span>Session Transcript</span>
             <span style="font-size: 0.75rem; color: var(--text-muted);">
-              ${session.path || 'unknown'} | ${history.length} messages
+              ${session.path || 'unknown'}${session.branch ? ' / ' + session.branch : ''} | ${history.length} messages
             </span>
           </h3>
+          ${depthHtml}
           <div class="transcript">${transcriptHtml || '<div class="empty-state">No messages</div>'}</div>
           ${discoveryHtml}
         </div>

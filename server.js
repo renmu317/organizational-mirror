@@ -1519,6 +1519,71 @@ app.get('/api/admin/users/:id/sessions', async (req, res) => {
 });
 
 // ============================================================
+// 【v9】获取用户统计指标
+// ============================================================
+app.get('/api/admin/users/:id/stats', async (req, res) => {
+  try {
+    const authPassword = req.headers['x-admin-password'];
+    if (authPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    let sessions = [];
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/sessions?user_id=eq.${id}&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+      if (response.ok) {
+        sessions = await response.json();
+      }
+    } else {
+      sessions = loadSessions().filter(s => s.user_id === id);
+    }
+
+    // 计算统计指标
+    const total = sessions.length;
+    const completed = sessions.filter(s => s.session_complete).length;
+    const orgSessions = sessions.filter(s => s.path === 'org');
+    const earlySessions = sessions.filter(s => s.path === 'early');
+
+    // 深度统计（org 路径）
+    const orgWithDepth = orgSessions.filter(s => s.depth_metrics && s.depth_metrics.max_depth > 0);
+    const avgDepth = orgWithDepth.length > 0
+      ? (orgWithDepth.reduce((sum, s) => sum + s.depth_metrics.max_depth, 0) / orgWithDepth.length).toFixed(1)
+      : null;
+    const brokeAssumption = orgWithDepth.filter(s => s.depth_metrics.broke_assumption).length;
+    const reachedRule = orgWithDepth.filter(s => s.depth_metrics.reached_rule).length;
+    const hasWorldRule = sessions.filter(s => s.world_rule).length;
+
+    res.json({
+      total_sessions: total,
+      completed_sessions: completed,
+      completion_rate: total > 0 ? ((completed / total) * 100).toFixed(0) + '%' : '0%',
+      org_sessions: orgSessions.length,
+      early_sessions: earlySessions.length,
+      avg_depth: avgDepth ? parseFloat(avgDepth) : null,
+      broke_assumption_count: brokeAssumption,
+      broke_assumption_rate: orgWithDepth.length > 0 ? ((brokeAssumption / orgWithDepth.length) * 100).toFixed(0) + '%' : null,
+      reached_rule_count: reachedRule,
+      reached_rule_rate: orgWithDepth.length > 0 ? ((reachedRule / orgWithDepth.length) * 100).toFixed(0) + '%' : null,
+      world_rule_count: hasWorldRule
+    });
+
+  } catch (error) {
+    console.error('获取用户统计错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
 // 健康检查
 // ============================================================
 app.get('/api/health', (req, res) => {
