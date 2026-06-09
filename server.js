@@ -63,6 +63,12 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+// 【v9】Admin 配置
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// 【v9】Vision 模型配置
+const DEEPSEEK_VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL || 'deepseek-chat';
+
 // 数据文件路径
 const CASE_LIBRARY_PATH = path.join(__dirname, 'data', 'caseLibrary.json');
 const SESSIONS_PATH = path.join(__dirname, 'data', 'sessions.json');
@@ -177,7 +183,9 @@ async function saveSessionToSupabase(session) {
         discovery_output: session.discovery_output,
         path: session.path || 'unknown',
         branch: session.branch || null,
-        followup_due: session.followup_due
+        followup_due: session.followup_due,
+        user_id: session.user_id || null,  // 【v9】关联用户
+        title: session.title || null        // 【v9】会话标题
       })
     });
 
@@ -315,12 +323,16 @@ function searchCases(history, stage) {
 }
 
 // ============================================================
-// DeepSeek API 调用
+// DeepSeek API 调用（v9：支持图片消息）
 // ============================================================
-async function callDeepSeek(systemPrompt, messages) {
+async function callDeepSeek(systemPrompt, messages, hasImage = false) {
   if (!DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY not configured');
   }
+
+  // 【v9】根据是否有图片选择模型
+  // 注意：DeepSeek 目前 vision 模型可能需要不同配置
+  const model = hasImage ? DEEPSEEK_VISION_MODEL : 'deepseek-chat';
 
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
@@ -329,7 +341,7 @@ async function callDeepSeek(systemPrompt, messages) {
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      model: model,
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages
@@ -346,6 +358,31 @@ async function callDeepSeek(systemPrompt, messages) {
 
   const data = await response.json();
   return data.choices[0].message.content;
+}
+
+// 【v9】检测消息中是否包含图片
+function hasImageInMessages(messages) {
+  return messages.some(msg => {
+    if (Array.isArray(msg.content)) {
+      return msg.content.some(c => c.type === 'image_url');
+    }
+    return false;
+  });
+}
+
+// 【v9】转换消息格式（处理图片）
+function convertMessagesForAPI(messages) {
+  return messages.map(msg => {
+    // 如果 content 已经是数组格式（包含图片），保持不变
+    if (Array.isArray(msg.content)) {
+      return msg;
+    }
+    // 纯文本消息
+    return {
+      role: msg.role,
+      content: msg.content
+    };
+  });
 }
 
 // ============================================================
@@ -652,8 +689,12 @@ app.post('/api/respond', async (req, res) => {
       }
     }
 
+    // 【v9】转换消息格式并检测图片
+    const convertedHistory = convertMessagesForAPI(history);
+    const hasImage = hasImageInMessages(convertedHistory);
+
     // 调用 DeepSeek
-    const aiContent = await callDeepSeek(systemPrompt, history);
+    const aiContent = await callDeepSeek(systemPrompt, convertedHistory, hasImage);
 
     // 解析响应
     let parsed = parseAIResponse(aiContent);
@@ -884,7 +925,7 @@ function buildDefaultDiscoveryOutput(state, history = []) {
 // ============================================================
 app.post('/api/session/save', async (req, res) => {
   try {
-    const { history, discoveryOutput, path, branch, layer_sequence, depth_metrics } = req.body;
+    const { history, discoveryOutput, path, branch, layer_sequence, depth_metrics, user_id } = req.body;
 
     if (!history || history.length === 0) {
       return res.status(400).json({ error: 'No history provided' });
@@ -898,6 +939,9 @@ app.post('/api/session/save', async (req, res) => {
       finalDepthMetrics = calculateDepthMetrics(layer_sequence);
     }
 
+    // 【v9】生成会话标题（取第一条用户消息前 30 字）
+    const title = userMessages[0]?.content?.slice(0, 30) || '新对话';
+
     const session = {
       id: `S${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -910,13 +954,54 @@ app.post('/api/session/save', async (req, res) => {
       followup_result: null,
       followup_due: (discoveryOutput?.seven_day_experiment && branch !== 'retrospective') ?
         new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
-      depth_metrics: finalDepthMetrics || null
+      depth_metrics: finalDepthMetrics || null,
+      user_id: user_id || null,  // 【v9】关联用户
+      title: title               // 【v9】会话标题
     };
 
     sessions.push(session);
     saveSessions(sessions);
 
     await saveSessionToSupabase(session);
+
+    // 【v9】更新用户的 session_count
+    if (user_id && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      try {
+        // 获取当前用户
+        const userResponse = await fetch(
+          `${SUPABASE_URL}/rest/v1/users?id=eq.${user_id}`,
+          {
+            headers: {
+              'apikey': SUPABASE_SERVICE_KEY,
+              'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+            }
+          }
+        );
+        if (userResponse.ok) {
+          const users = await userResponse.json();
+          if (users.length > 0) {
+            const currentCount = users[0].session_count || 0;
+            await fetch(
+              `${SUPABASE_URL}/rest/v1/users?id=eq.${user_id}`,
+              {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': SUPABASE_SERVICE_KEY,
+                  'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+                },
+                body: JSON.stringify({
+                  session_count: currentCount + 1,
+                  last_active: new Date().toISOString()
+                })
+              }
+            );
+          }
+        }
+      } catch (e) {
+        console.error('[Supabase] 更新用户会话计数失败:', e.message);
+      }
+    }
 
     res.json({ success: true, sessionId: session.id });
 
@@ -1112,16 +1197,302 @@ app.get('/api/sessions/pending-followup', (req, res) => {
 });
 
 // ============================================================
+// 【v9】用户管理端点
+// ============================================================
+app.post('/api/users', async (req, res) => {
+  try {
+    const { name, company } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const userId = `U${Date.now()}`;
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      // 先查找是否已存在同名用户
+      const searchResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/users?name=eq.${encodeURIComponent(name.trim())}&limit=1`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+
+      if (searchResponse.ok) {
+        const existingUsers = await searchResponse.json();
+        if (existingUsers.length > 0) {
+          // 更新 last_active
+          const existingUser = existingUsers[0];
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/users?id=eq.${existingUser.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_SERVICE_KEY,
+                'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+              },
+              body: JSON.stringify({ last_active: new Date().toISOString() })
+            }
+          );
+          return res.json({ user: existingUser, isNew: false });
+        }
+      }
+
+      // 创建新用户
+      const createResponse = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({
+          id: userId,
+          name: name.trim(),
+          company: company?.trim() || null,
+          first_seen: new Date().toISOString(),
+          session_count: 0,
+          last_active: new Date().toISOString()
+        })
+      });
+
+      if (!createResponse.ok) {
+        const error = await createResponse.text();
+        console.error('[Supabase] 创建用户失败:', error);
+        return res.status(500).json({ error: 'Failed to create user' });
+      }
+
+      const newUsers = await createResponse.json();
+      return res.json({ user: newUsers[0], isNew: true });
+    }
+
+    // 本地模式
+    res.json({
+      user: { id: userId, name: name.trim(), company: company?.trim() || null },
+      isNew: true
+    });
+
+  } catch (error) {
+    console.error('创建用户错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// 【v9】获取用户会话列表
+// ============================================================
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/sessions?user_id=eq.${user_id}&select=id,title,created_at,path,session_complete&order=created_at.desc`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('[Supabase] 获取会话列表失败:', error);
+        return res.status(500).json({ error: 'Failed to fetch sessions' });
+      }
+
+      const sessions = await response.json();
+      return res.json({ sessions });
+    }
+
+    // 本地模式
+    const sessions = loadSessions().filter(s => s.user_id === user_id);
+    res.json({
+      sessions: sessions.map(s => ({
+        id: s.id,
+        title: s.title || s.surface_problem?.slice(0, 30) || '新对话',
+        created_at: s.timestamp,
+        path: s.path,
+        session_complete: !!s.discovery_output
+      }))
+    });
+
+  } catch (error) {
+    console.error('获取会话列表错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// 【v9】获取单条完整会话
+// ============================================================
+app.get('/api/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&select=*`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('[Supabase] 获取会话详情失败:', error);
+        return res.status(500).json({ error: 'Failed to fetch session' });
+      }
+
+      const sessions = await response.json();
+      if (sessions.length === 0) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      return res.json({ session: sessions[0] });
+    }
+
+    // 本地模式
+    const sessions = loadSessions();
+    const session = sessions.find(s => s.id === id);
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    res.json({ session });
+
+  } catch (error) {
+    console.error('获取会话详情错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// 【v9】Admin 密码验证
+// ============================================================
+app.post('/api/admin/verify', (req, res) => {
+  const { password } = req.body;
+
+  if (!ADMIN_PASSWORD) {
+    return res.status(500).json({ error: 'Admin password not configured' });
+  }
+
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ success: true });
+  }
+
+  res.status(401).json({ error: 'Invalid password' });
+});
+
+// ============================================================
+// 【v9】获取所有用户列表
+// ============================================================
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    // 简单的密码验证（通过 header）
+    const authPassword = req.headers['x-admin-password'];
+    if (authPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/users?select=*&order=last_active.desc`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('[Supabase] 获取用户列表失败:', error);
+        return res.status(500).json({ error: 'Failed to fetch users' });
+      }
+
+      const users = await response.json();
+      return res.json({ users });
+    }
+
+    // 本地模式不支持
+    res.json({ users: [] });
+
+  } catch (error) {
+    console.error('获取用户列表错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// 【v9】获取用户的所有会话
+// ============================================================
+app.get('/api/admin/users/:id/sessions', async (req, res) => {
+  try {
+    const authPassword = req.headers['x-admin-password'];
+    if (authPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/sessions?user_id=eq.${id}&select=*&order=created_at.desc`,
+        {
+          headers: {
+            'apikey': SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('[Supabase] 获取用户会话失败:', error);
+        return res.status(500).json({ error: 'Failed to fetch sessions' });
+      }
+
+      const sessions = await response.json();
+      return res.json({ sessions });
+    }
+
+    // 本地模式
+    const sessions = loadSessions().filter(s => s.user_id === id);
+    res.json({ sessions });
+
+  } catch (error) {
+    console.error('获取用户会话错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
 // 健康检查
 // ============================================================
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '8.0-hard-close',
+    version: '9.0-sidebar-admin',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
-    architecture: 'v8-all-paths-hard-close',
+    architecture: 'v9-sidebar-admin-vision',
     hard_caps: HARD_CAPS
   });
 });
@@ -1131,13 +1502,18 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v8 - 全路径硬收尾 + 用户结束按钮');
+  console.log('组织镜子 v9 - 侧边栏 + 后台 + 图片上传');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
+  console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);
 
   if (!DEEPSEEK_API_KEY) {
     console.log('⚠️  警告: DEEPSEEK_API_KEY 未配置');
     console.log('   请复制 .env.example 为 .env 并填入 API Key\n');
+  }
+
+  if (!ADMIN_PASSWORD) {
+    console.log('⚠️  警告: ADMIN_PASSWORD 未配置');
   }
 
   const cases = loadCaseLibrary();
@@ -1146,15 +1522,12 @@ app.listen(PORT, () => {
       c.completeness === 'gap' || c.completeness === 'enriched'
     ).length;
     console.log(`案例库状态: ${active} 条活跃案例 / ${cases.length} 条总计`);
-  } else {
-    console.log('⚠️  案例库为空');
   }
 
-  console.log('\nv8 核心改动:');
-  console.log('  - 全路径硬收尾：retrospective/actionable/early/hardCap/userRequest');
-  console.log('  - early: 成功定义+实验行动 或 8轮硬上限');
-  console.log('  - org: world_rule+1轮 或 18轮硬上限');
-  console.log('  - 用户随时可点"结束并生成卡片"');
+  console.log('\nv9 新功能:');
+  console.log('  1. 历史对话侧边栏（用户名 + 会话列表 + 回看）');
+  console.log('  2. /admin 后台增强（密码保护 + 用户浏览 + 会话详情）');
+  console.log('  3. 图片上传分析（base64 + 多模态提问）');
   console.log(`  - 硬上限: early=${HARD_CAPS.early}轮, org=${HARD_CAPS.org}轮`);
 
   console.log('\n' + '='.repeat(60));

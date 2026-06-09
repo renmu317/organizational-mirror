@@ -9,13 +9,54 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
-  <div class="container" id="appContainer">
+  <!-- 【v9】开场姓名弹窗 -->
+  <div class="name-modal-overlay" id="nameModalOverlay" style="display: none;">
+    <div class="name-modal">
+      <h2>Welcome</h2>
+      <p>Enter your name to start the conversation</p>
+      <input type="text" id="nameInput" placeholder="Your name" maxlength="50" />
+      <input type="text" id="companyInput" placeholder="Company (optional)" maxlength="100" />
+      <button id="nameSubmitBtn" class="btn-primary" disabled>Start Conversation</button>
+    </div>
+  </div>
+
+  <!-- 【v9】主布局：侧边栏 + 内容区 -->
+  <div class="app-layout" id="appLayout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo-row">
+          <img src="logo.png" alt="照见" class="sidebar-logo-img" />
+          <h1 class="sidebar-logo">照见</h1>
+        </div>
+        <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+      </div>
+      <div class="sidebar-sessions" id="sidebarSessions">
+        <!-- 会话列表动态生成 -->
+      </div>
+      <div class="sidebar-footer">
+        <span class="user-name" id="sidebarUserName"></span>
+      </div>
+    </aside>
+
+    <!-- 移动端汉堡菜单按钮 -->
+    <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <!-- 主内容区 -->
+    <div class="container" id="appContainer">
     <!-- 欢迎区域（初始居中，有消息后隐藏） -->
     <div class="welcome-hero" id="welcomeHero">
-      <h1 class="logo">照见</h1>
+      <div class="welcome-logo-row">
+        <img src="logo.png" alt="照见" class="welcome-logo-img" />
+        <h1 class="logo">照见</h1>
+      </div>
       <p class="tagline">发现你还没看见的问题</p>
     </div>
 
@@ -42,7 +83,21 @@
 
     <!-- 输入区域 -->
     <footer class="input-container" id="inputContainer">
+      <!-- 【v9】图片预览区 -->
+      <div class="image-preview-container" id="imagePreviewContainer" style="display: none;">
+        <div class="image-preview" id="imagePreview">
+          <img id="previewImg" src="" alt="Preview" />
+          <button class="remove-image-btn" id="removeImageBtn" aria-label="Remove image">&times;</button>
+        </div>
+      </div>
       <div class="input-wrapper">
+        <!-- 【v9】图片上传按钮 -->
+        <button class="upload-btn" id="uploadBtn" aria-label="Upload image">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <input type="file" id="imageInput" accept="image/jpeg,image/png,image/webp" style="display: none;" />
         <textarea
           id="userInput"
           placeholder="此刻，你公司/项目最大的挑战是什么？"
@@ -83,8 +138,9 @@
       <p>思考中...</p>
     </div>
   </div>
+  </div> <!-- 关闭 app-layout -->
 
-  <script src="config.js?v=15"></script>
-  <script src="app.js?v=15"></script>
+  <script src="config.js?v=16"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

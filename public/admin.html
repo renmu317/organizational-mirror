@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <title>照见 - 统计后台</title>
+  <title>照见 - Admin Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
@@ -66,6 +66,12 @@
       margin-left: 0.5rem;
     }
 
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
     .back-link {
       color: var(--text-secondary);
       text-decoration: none;
@@ -76,26 +82,316 @@
       color: var(--accent-light);
     }
 
-    /* 警告横幅 */
-    .warning-banner {
-      background: rgba(245, 158, 11, 0.1);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      border-radius: 8px;
-      padding: 1rem;
+    /* 密码登录页 */
+    .login-page {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+    }
+
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    .login-card h2 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .login-card p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
       margin-bottom: 1.5rem;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .login-card input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .login-card button {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-card button:hover {
+      background: var(--accent-light);
+    }
+
+    .login-error {
+      color: var(--danger);
+      font-size: 0.875rem;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    /* 导航 */
+    .nav-tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    .nav-tab {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-tab:hover {
+      border-color: var(--text-muted);
+    }
+
+    .nav-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    /* 用户列表 */
+    .users-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .user-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .user-card:hover {
+      border-color: var(--accent);
+    }
+
+    .user-card h3 {
+      font-size: 1.125rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .user-card .company {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .user-stats {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .user-stat {
+      text-align: center;
+    }
+
+    .user-stat .value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent-light);
+    }
+
+    .user-stat .label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* 会话列表 */
+    .sessions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .session-card:hover {
+      border-color: var(--accent);
+    }
+
+    .session-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .session-title {
+      font-weight: 500;
+    }
+
+    .session-date {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .session-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .session-tag {
+      background: var(--bg-secondary);
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    /* 会话详情 */
+    .session-detail {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .session-detail h3 {
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .transcript {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+    }
+
+    .transcript-message {
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .transcript-message:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .transcript-role {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .transcript-role.user {
+      color: var(--accent-light);
+    }
+
+    .transcript-content {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .discovery-section {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .discovery-section h4 {
+      margin-bottom: 1rem;
       color: var(--warning);
+    }
+
+    .discovery-field {
+      margin-bottom: 1rem;
+    }
+
+    .discovery-field label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .discovery-field p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .btn-back {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
       font-size: 0.875rem;
     }
 
-    /* 面板标题 */
-    .panel-title {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 1.5rem;
-      color: var(--text-primary);
+    .btn-back:hover {
+      border-color: var(--text-muted);
     }
 
-    /* 指标网格 */
+    /* Breadcrumb */
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .breadcrumb a {
+      color: var(--accent-light);
+      text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    /* 统计面板保留 */
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -111,11 +407,6 @@
       text-align: center;
     }
 
-    .metric-card.highlight {
-      border-color: var(--accent);
-      background: rgba(59, 130, 246, 0.05);
-    }
-
     .metric-value {
       display: block;
       font-size: 2.5rem;
@@ -124,502 +415,400 @@
       margin-bottom: 0.25rem;
     }
 
-    .metric-card.highlight .metric-value {
-      color: var(--accent-light);
-    }
-
     .metric-label {
       display: block;
       font-size: 0.875rem;
       color: var(--text-secondary);
     }
 
-    .metric-sublabel {
-      display: block;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 0.25rem;
-    }
-
-    /* 深度分布图 */
-    .depth-distribution {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-    }
-
-    .distribution-title {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 1rem;
-      color: var(--text-primary);
-    }
-
-    .bar-chart {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      height: 200px;
-      padding: 1rem 0;
-      gap: 0.5rem;
-    }
-
-    .bar-item {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      height: 100%;
-    }
-
-    .bar-wrapper {
-      flex: 1;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      align-items: center;
-    }
-
-    .bar {
-      width: 60%;
-      min-width: 30px;
-      max-width: 60px;
-      background: var(--accent);
-      border-radius: 4px 4px 0 0;
-      transition: height 0.3s ease;
-      position: relative;
-    }
-
-    .bar.deep {
-      background: var(--success);
-    }
-
-    .bar-count {
-      position: absolute;
-      top: -1.5rem;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-    }
-
-    .bar-label {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 0.5rem;
-      text-align: center;
-    }
-
-    .bar-layer {
-      font-size: 0.625rem;
-      color: var(--text-muted);
-    }
-
-    /* 浅层空转警告 */
-    .shallow-alert {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-    }
-
-    .shallow-alert.has-warning {
-      border-color: var(--warning);
-      background: rgba(245, 158, 11, 0.05);
-    }
-
-    .shallow-alert h3 {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 0.5rem;
-      color: var(--text-primary);
-    }
-
-    .shallow-alert .count {
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--warning);
-    }
-
-    .shallow-alert .hint {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      margin-top: 0.5rem;
-    }
-
-    /* 用途说明 */
-    .usage-note {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-    }
-
-    .usage-note h3 {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 1rem;
-      color: var(--text-primary);
-    }
-
-    .usage-note ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .usage-note li {
-      font-size: 0.875rem;
-      color: var(--text-secondary);
-      padding: 0.5rem 0;
-      padding-left: 1.5rem;
-      position: relative;
-    }
-
-    .usage-note li::before {
-      content: '•';
-      position: absolute;
-      left: 0;
-      color: var(--text-muted);
-    }
-
-    .usage-note li:first-child {
-      font-weight: 500;
-      color: var(--warning);
-    }
-
-    .usage-note li strong {
-      color: var(--text-primary);
-    }
-
-    /* 双栏布局 */
-    .two-columns {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 2rem;
-    }
-
-    @media (max-width: 768px) {
-      .two-columns {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* Early 路径面板 */
-    .early-panel {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-    }
-
-    .early-panel h3 {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 1rem;
-      color: var(--text-primary);
-    }
-
-    .early-stat {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .early-stat:last-child {
-      border-bottom: none;
-    }
-
-    .early-stat .label {
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-    }
-
-    .early-stat .value {
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-
-    /* 加载状态 */
     .loading {
       text-align: center;
       padding: 3rem;
       color: var(--text-muted);
     }
 
-    /* 刷新按钮 */
-    .refresh-btn {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 1rem;
-      color: var(--text-secondary);
-      cursor: pointer;
-      font-size: 0.875rem;
-      transition: all 0.2s;
-    }
-
-    .refresh-btn:hover {
-      background: var(--bg-secondary);
-      color: var(--text-primary);
-    }
-
-    /* 最近对话列表 */
-    .recent-list {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-top: 2rem;
-    }
-
-    .recent-list h3 {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 1rem;
-      color: var(--text-primary);
-    }
-
-    .recent-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.875rem;
-    }
-
-    .recent-item:last-child {
-      border-bottom: none;
-    }
-
-    .recent-item .depth {
-      font-weight: 500;
-      color: var(--accent-light);
-    }
-
-    .recent-item .depth.shallow {
-      color: var(--warning);
-    }
-
-    .recent-item .turns {
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
       color: var(--text-muted);
-    }
-
-    .recent-item .date {
-      color: var(--text-muted);
-      font-size: 0.75rem;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <div class="logo">照见 <span>统计后台</span></div>
-      <div>
-        <button class="refresh-btn" onclick="loadStats()">刷新数据</button>
-        <a href="/" class="back-link" style="margin-left: 1rem;">返回对话</a>
+      <div class="logo">照见 <span>Admin Dashboard</span></div>
+      <div class="header-actions">
+        <button class="nav-tab" id="logoutBtn" style="display: none;">Logout</button>
+        <a href="/" class="back-link">Return to Chat</a>
       </div>
     </header>
 
     <div id="content">
-      <div class="loading">加载中...</div>
+      <!-- 动态内容 -->
     </div>
   </div>
 
   <script>
     const API_BASE = window.location.origin;
+    let adminPassword = sessionStorage.getItem('admin_password') || '';
+    let currentView = 'login';
+    let currentUserId = null;
+    let currentSessionId = null;
 
-    async function loadStats() {
-      const content = document.getElementById('content');
-      content.innerHTML = '<div class="loading">加载中...</div>';
+    // 初始化
+    async function init() {
+      if (adminPassword) {
+        const valid = await verifyPassword(adminPassword);
+        if (valid) {
+          showUsersView();
+          document.getElementById('logoutBtn').style.display = 'block';
+        } else {
+          sessionStorage.removeItem('admin_password');
+          adminPassword = '';
+          showLoginView();
+        }
+      } else {
+        showLoginView();
+      }
+    }
+
+    // 验证密码
+    async function verifyPassword(password) {
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        return response.ok;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    // 登录页
+    function showLoginView() {
+      currentView = 'login';
+      document.getElementById('content').innerHTML = `
+        <div class="login-page">
+          <div class="login-card">
+            <h2>Admin Access</h2>
+            <p>Enter password to continue</p>
+            <input type="password" id="passwordInput" placeholder="Password" />
+            <button onclick="handleLogin()">Login</button>
+            <p class="login-error" id="loginError">Invalid password</p>
+          </div>
+        </div>
+      `;
+      document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleLogin();
+      });
+      document.getElementById('passwordInput').focus();
+    }
+
+    // 处理登录
+    async function handleLogin() {
+      const password = document.getElementById('passwordInput').value;
+      const valid = await verifyPassword(password);
+
+      if (valid) {
+        adminPassword = password;
+        sessionStorage.setItem('admin_password', password);
+        document.getElementById('logoutBtn').style.display = 'block';
+        showUsersView();
+      } else {
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
+
+    // 登出
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      adminPassword = '';
+      sessionStorage.removeItem('admin_password');
+      document.getElementById('logoutBtn').style.display = 'none';
+      showLoginView();
+    });
+
+    // 用户列表页
+    async function showUsersView() {
+      currentView = 'users';
+      currentUserId = null;
+      document.getElementById('content').innerHTML = `
+        <nav class="nav-tabs">
+          <button class="nav-tab active">Users</button>
+          <button class="nav-tab" onclick="showStatsView()">Statistics</button>
+        </nav>
+        <div id="usersContainer"><div class="loading">Loading users...</div></div>
+      `;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/users`, {
+          headers: { 'X-Admin-Password': adminPassword }
+        });
+        const data = await response.json();
+
+        if (data.users && data.users.length > 0) {
+          renderUsers(data.users);
+        } else {
+          document.getElementById('usersContainer').innerHTML = `
+            <div class="empty-state">No users yet</div>
+          `;
+        }
+      } catch (error) {
+        document.getElementById('usersContainer').innerHTML = `
+          <div class="empty-state">Failed to load users: ${error.message}</div>
+        `;
+      }
+    }
+
+    // 渲染用户列表
+    function renderUsers(users) {
+      document.getElementById('usersContainer').innerHTML = `
+        <div class="users-grid">
+          ${users.map(user => {
+            const lastActive = user.last_active ? new Date(user.last_active).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Never';
+
+            return `
+              <div class="user-card" onclick="showUserSessions('${user.id}', '${escapeHtml(user.name)}')">
+                <h3>${escapeHtml(user.name)}</h3>
+                <p class="company">${user.company ? escapeHtml(user.company) : 'No company'}</p>
+                <div class="user-stats">
+                  <div class="user-stat">
+                    <div class="value">${user.session_count || 0}</div>
+                    <div class="label">Sessions</div>
+                  </div>
+                  <div class="user-stat">
+                    <div class="value" style="font-size: 0.875rem; color: var(--text-muted);">${lastActive}</div>
+                    <div class="label">Last Active</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    // 用户会话列表
+    async function showUserSessions(userId, userName) {
+      currentView = 'sessions';
+      currentUserId = userId;
+
+      document.getElementById('content').innerHTML = `
+        <div class="breadcrumb">
+          <a href="#" onclick="showUsersView(); return false;">Users</a>
+          <span>/</span>
+          <span>${escapeHtml(userName)}</span>
+        </div>
+        <div id="sessionsContainer"><div class="loading">Loading sessions...</div></div>
+      `;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/users/${userId}/sessions`, {
+          headers: { 'X-Admin-Password': adminPassword }
+        });
+        const data = await response.json();
+
+        if (data.sessions && data.sessions.length > 0) {
+          renderSessions(data.sessions, userName);
+        } else {
+          document.getElementById('sessionsContainer').innerHTML = `
+            <div class="empty-state">No sessions for this user</div>
+          `;
+        }
+      } catch (error) {
+        document.getElementById('sessionsContainer').innerHTML = `
+          <div class="empty-state">Failed to load sessions: ${error.message}</div>
+        `;
+      }
+    }
+
+    // 渲染会话列表
+    function renderSessions(sessions, userName) {
+      document.getElementById('sessionsContainer').innerHTML = `
+        <div class="sessions-list">
+          ${sessions.map(session => {
+            const date = new Date(session.created_at).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            const title = session.title || session.surface_problem?.slice(0, 50) || 'Untitled';
+            const path = session.path || 'unknown';
+            const complete = session.session_complete ? 'Completed' : 'In Progress';
+
+            return `
+              <div class="session-card" onclick="showSessionDetail('${session.id}', '${escapeHtml(userName)}')">
+                <div class="session-header">
+                  <span class="session-title">${escapeHtml(title)}</span>
+                  <span class="session-date">${date}</span>
+                </div>
+                <div class="session-meta">
+                  <span class="session-tag">${path}</span>
+                  <span class="session-tag">${complete}</span>
+                  ${session.world_rule ? '<span class="session-tag" style="color: var(--success);">Has Rule</span>' : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    // 会话详情
+    async function showSessionDetail(sessionId, userName) {
+      currentView = 'detail';
+      currentSessionId = sessionId;
+
+      document.getElementById('content').innerHTML = `
+        <div class="breadcrumb">
+          <a href="#" onclick="showUsersView(); return false;">Users</a>
+          <span>/</span>
+          <a href="#" onclick="showUserSessions('${currentUserId}', '${escapeHtml(userName)}'); return false;">${escapeHtml(userName)}</a>
+          <span>/</span>
+          <span>Session</span>
+        </div>
+        <div id="detailContainer"><div class="loading">Loading session...</div></div>
+      `;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
+        const data = await response.json();
+
+        if (data.session) {
+          renderSessionDetail(data.session, userName);
+        } else {
+          document.getElementById('detailContainer').innerHTML = `
+            <div class="empty-state">Session not found</div>
+          `;
+        }
+      } catch (error) {
+        document.getElementById('detailContainer').innerHTML = `
+          <div class="empty-state">Failed to load session: ${error.message}</div>
+        `;
+      }
+    }
+
+    // 渲染会话详情
+    function renderSessionDetail(session, userName) {
+      const history = session.history || [];
+      const discovery = session.discovery_output;
+
+      let transcriptHtml = history.map(msg => `
+        <div class="transcript-message">
+          <div class="transcript-role ${msg.role}">${msg.role === 'user' ? 'User' : 'AI'}</div>
+          <div class="transcript-content">${escapeHtml(msg.content)}</div>
+        </div>
+      `).join('');
+
+      let discoveryHtml = '';
+      if (discovery) {
+        discoveryHtml = `
+          <div class="discovery-section">
+            <h4>Discovery Card</h4>
+            ${discovery.current_problem ? `
+              <div class="discovery-field">
+                <label>Problem</label>
+                <p>${escapeHtml(discovery.current_problem)}</p>
+              </div>
+            ` : ''}
+            ${discovery.world_rule || session.world_rule ? `
+              <div class="discovery-field">
+                <label>World Rule</label>
+                <p style="color: var(--warning);">${escapeHtml(discovery.world_rule || session.world_rule)}</p>
+              </div>
+            ` : ''}
+            ${discovery.causal_chain && discovery.causal_chain.length > 0 ? `
+              <div class="discovery-field">
+                <label>Causal Chain</label>
+                <p>${discovery.causal_chain.map(c => escapeHtml(c)).join(' → ')}</p>
+              </div>
+            ` : ''}
+            ${discovery.seven_day_experiment ? `
+              <div class="discovery-field">
+                <label>7-Day Experiment</label>
+                <p>${escapeHtml(discovery.seven_day_experiment.experiment || 'N/A')}</p>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      document.getElementById('detailContainer').innerHTML = `
+        <div class="session-detail">
+          <h3>
+            <span>Session Transcript</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">
+              ${session.path || 'unknown'} | ${history.length} messages
+            </span>
+          </h3>
+          <div class="transcript">${transcriptHtml || '<div class="empty-state">No messages</div>'}</div>
+          ${discoveryHtml}
+        </div>
+      `;
+    }
+
+    // 统计页
+    async function showStatsView() {
+      currentView = 'stats';
+      document.getElementById('content').innerHTML = `
+        <nav class="nav-tabs">
+          <button class="nav-tab" onclick="showUsersView()">Users</button>
+          <button class="nav-tab active">Statistics</button>
+        </nav>
+        <div id="statsContainer"><div class="loading">Loading statistics...</div></div>
+      `;
 
       try {
         const response = await fetch(`${API_BASE}/api/stats/depth`);
         const data = await response.json();
         renderStats(data);
       } catch (error) {
-        content.innerHTML = `<div class="warning-banner">加载失败: ${error.message}</div>`;
+        document.getElementById('statsContainer').innerHTML = `
+          <div class="empty-state">Failed to load statistics: ${error.message}</div>
+        `;
       }
     }
 
+    // 渲染统计
     function renderStats(data) {
       const { org, early } = data;
-      const content = document.getElementById('content');
-
-      let html = '';
-
-      // 样本警告
-      if (org.warning) {
-        html += `<div class="warning-banner">${org.warning}</div>`;
-      }
-
-      // 核心指标卡片
-      const totalOrgCount = org.total_count || org.sample_size || 0;
       const hasDepthData = org.sample_size > 0;
 
-      html += `
-        <h2 class="panel-title">对话深度统计 (组织路径)</h2>
-        ${org.warning ? `<div class="warning-banner">${org.warning}</div>` : ''}
+      document.getElementById('statsContainer').innerHTML = `
         <div class="metrics-grid">
           <div class="metric-card">
+            <span class="metric-value">${org.total_count || org.sample_size || 0}</span>
+            <span class="metric-label">Org Sessions</span>
+          </div>
+          <div class="metric-card">
             <span class="metric-value">${org.avg_depth != null ? org.avg_depth : '--'}</span>
-            <span class="metric-label">平均深度</span>
-            <span class="metric-sublabel">${org.avg_depth_label || (hasDepthData ? '' : '暂无数据')}</span>
+            <span class="metric-label">Avg Depth</span>
           </div>
-          <div class="metric-card highlight">
+          <div class="metric-card">
             <span class="metric-value">${org.broke_assumption_rate || '--'}</span>
-            <span class="metric-label">假设突破率</span>
-            <span class="metric-sublabel">${hasDepthData ? `${org.broke_assumption_count || 0} / ${org.sample_size} 场` : '暂无数据'}</span>
+            <span class="metric-label">Assumption Rate</span>
           </div>
           <div class="metric-card">
-            <span class="metric-value">${org.reached_rule_rate || '--'}</span>
-            <span class="metric-label">规则到达率</span>
-            <span class="metric-sublabel">${hasDepthData ? `${org.reached_rule_count || 0} / ${org.sample_size} 场` : '暂无数据'}</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-value">${totalOrgCount}</span>
-            <span class="metric-label">总对话数</span>
-            <span class="metric-sublabel">org 路径${hasDepthData ? ` (${org.sample_size} 有深度数据)` : ''}</span>
+            <span class="metric-value">${early.sample_size || 0}</span>
+            <span class="metric-label">Early Sessions</span>
           </div>
         </div>
+        ${org.warning ? `<p style="color: var(--warning); font-size: 0.875rem; margin-bottom: 1rem;">${org.warning}</p>` : ''}
       `;
-
-      // 深度分布图
-      if (org.depth_distribution) {
-        const dist = org.depth_distribution;
-        const labels = org.depth_distribution_labels || {};
-        const maxCount = Math.max(...Object.values(dist), 1);
-
-        html += `
-          <div class="depth-distribution">
-            <div class="distribution-title">深度分布 (最深层级)</div>
-            <div class="bar-chart">
-        `;
-
-        for (let i = 1; i <= 6; i++) {
-          const count = dist[i] || 0;
-          const height = maxCount > 0 ? (count / maxCount) * 150 : 0;
-          const isDeep = i >= 4;
-
-          html += `
-            <div class="bar-item">
-              <div class="bar-wrapper">
-                <div class="bar ${isDeep ? 'deep' : ''}" style="height: ${height}px;">
-                  <span class="bar-count">${count}</span>
-                </div>
-              </div>
-              <div class="bar-label">${i}</div>
-              <div class="bar-layer">${labels[i] || ''}</div>
-            </div>
-          `;
-        }
-
-        html += `
-            </div>
-          </div>
-        `;
-      }
-
-      // 浅层空转警告
-      if (org.depth_vs_turns) {
-        const { shallow_high_turns_count, shallow_high_turns_rate } = org.depth_vs_turns;
-        const hasWarning = shallow_high_turns_count > 0;
-
-        html += `
-          <div class="shallow-alert ${hasWarning ? 'has-warning' : ''}">
-            <h3>${hasWarning ? '⚠️ 浅层空转警告' : '✓ 对话质量正常'}</h3>
-            <p>
-              <span class="count">${shallow_high_turns_count}</span> 场对话
-              (${shallow_high_turns_rate}) 轮数≥6 但深度≤3
-            </p>
-            ${hasWarning ? '<p class="hint">这意味着对话在浅层打转，提问话术可能需要调整</p>' : ''}
-          </div>
-        `;
-      }
-
-      // 两栏布局：用途说明 + Early 路径
-      html += `<div class="two-columns">`;
-
-      // 用途说明
-      html += `
-        <div class="usage-note">
-          <h3>📊 指标用途说明</h3>
-          <ul>
-            <li>这是观测仪表盘，不是 AI 的 KPI — 硬刷的深度是假的</li>
-            <li><strong>假设突破率高</strong> = 真在产生认知重构</li>
-            <li><strong>普遍卡在决策层</strong> = 假设追问话术需改进 (调 v5 提示词)</li>
-            <li><strong>max_depth 高的对话</strong> = 高质量种子案例</li>
-            <li><strong>深度 vs 轮数</strong>：轮数高但深度低 = 话术在浅层空转</li>
-          </ul>
-        </div>
-      `;
-
-      // Early 路径面板
-      html += `
-        <div class="early-panel">
-          <h3>早期路径统计</h3>
-          <div class="early-stat">
-            <span class="label">对话数</span>
-            <span class="value">${early.sample_size}</span>
-          </div>
-          <div class="early-stat">
-            <span class="label">产出实验数</span>
-            <span class="value">${early.qualified_count}</span>
-          </div>
-          <div class="early-stat">
-            <span class="label">达标率</span>
-            <span class="value">${early.qualified_rate}</span>
-          </div>
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem;">
-            早期路径不使用六层深度，单独统计实验产出率
-          </p>
-        </div>
-      `;
-
-      html += `</div>`;
-
-      // 最近对话列表
-      if (org.depth_vs_turns && org.depth_vs_turns.recent && org.depth_vs_turns.recent.length > 0) {
-        html += `
-          <div class="recent-list">
-            <h3>最近对话 (org 路径)</h3>
-        `;
-
-        org.depth_vs_turns.recent.forEach(item => {
-          const isShallow = item.shallow_high_turns;
-          const date = new Date(item.timestamp).toLocaleString('zh-CN', {
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-
-          html += `
-            <div class="recent-item">
-              <div>
-                <span class="depth ${isShallow ? 'shallow' : ''}">深度 ${item.max_depth}</span>
-                <span class="turns" style="margin-left: 1rem;">${item.turns} 轮</span>
-                ${isShallow ? '<span style="color: var(--warning); margin-left: 0.5rem;">⚠️</span>' : ''}
-              </div>
-              <span class="date">${date}</span>
-            </div>
-          `;
-        });
-
-        html += `</div>`;
-      }
-
-      content.innerHTML = html;
     }
 
-    // 页面加载时获取数据
-    loadStats();
+    // 工具函数
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 启动
+    init();
   </script>
 </body>
 </html>

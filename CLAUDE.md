@@ -4,6 +4,48 @@
 
 一个让企业领导者**自己发现**组织真实瓶颈的 AI 咨询对话工具。
 
+## v9.0 侧边栏 + 后台 + 图片上传 (2026-06-09 更新)
+
+### v9 新功能
+
+| 功能 | 说明 |
+|------|------|
+| **历史对话侧边栏** | 用户姓名登录 + 会话列表 + 回看功能 |
+| **Admin 后台增强** | 密码保护 + 用户浏览 + 会话详情 |
+| **图片上传分析** | 上传财报/截图，AI 结合图片提问 |
+
+### 访问地址
+
+| 页面 | URL |
+|------|-----|
+| 主页 | http://localhost:3000 |
+| Admin 后台 | http://localhost:3000/admin.html |
+
+### Admin 密码
+
+```
+X1syFCXQhg0WpaWQ
+```
+
+### v9 新增 API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/users` | POST | 创建/查找用户 |
+| `/api/sessions` | GET | 获取用户会话列表 |
+| `/api/sessions/:id` | GET | 获取单条完整会话 |
+| `/api/admin/verify` | POST | 验证 Admin 密码 |
+| `/api/admin/users` | GET | 获取所有用户列表 |
+| `/api/admin/users/:id/sessions` | GET | 获取用户的所有会话 |
+
+### 环境变量
+
+```bash
+# .env 新增
+ADMIN_PASSWORD=X1syFCXQhg0WpaWQ
+DEEPSEEK_VISION_MODEL=deepseek-chat
+```
+
 ## v8.0 全路径硬收尾 (2026-06-08 更新)
 
 ### v8 核心改进

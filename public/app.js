@@ -1,10 +1,11 @@
 /**
- * 组织镜子 - 前端逻辑 (v3 双路径架构)
+ * 组织镜子 - 前端逻辑 (v9 侧边栏 + 用户管理)
  *
- * UI简化：
- * - 无进度条，后端隐性分类
- * - 支持L3选择题渲染
- * - 双路径输出卡（early / org）
+ * v9 新增：
+ * - 开场姓名弹窗
+ * - 历史会话侧边栏
+ * - 会话回看功能
+ * - 移动端汉堡菜单
  */
 
 class OrganizationalMirror {
@@ -14,6 +15,15 @@ class OrganizationalMirror {
     this.sessionId = null;
     this.sessionComplete = false;
     this.isLoading = false;
+
+    // 【v9】用户状态
+    this.currentUser = null;
+    this.sessions = [];
+    this.viewingSessionId = null;  // 正在回看的会话 ID
+    this.isReplayMode = false;
+
+    // 【v9】图片上传状态
+    this.pendingImage = null;  // { base64, file }
 
     // L3 选择题状态
     this.pendingOptions = null;
@@ -40,7 +50,27 @@ class OrganizationalMirror {
     this.choiceOther = document.getElementById('choiceOther');
     this.otherInput = document.getElementById('otherInput');
     this.otherSubmit = document.getElementById('otherSubmit');
-    this.endSessionBtn = document.getElementById('endSessionBtn'); // 【v8】结束按钮
+    this.endSessionBtn = document.getElementById('endSessionBtn');
+
+    // 【v9】侧边栏元素
+    this.sidebar = document.getElementById('sidebar');
+    this.sidebarSessions = document.getElementById('sidebarSessions');
+    this.sidebarUserName = document.getElementById('sidebarUserName');
+    this.newChatBtn = document.getElementById('newChatBtn');
+    this.hamburgerBtn = document.getElementById('hamburgerBtn');
+
+    // 【v9】姓名弹窗元素
+    this.nameModalOverlay = document.getElementById('nameModalOverlay');
+    this.nameInput = document.getElementById('nameInput');
+    this.companyInput = document.getElementById('companyInput');
+    this.nameSubmitBtn = document.getElementById('nameSubmitBtn');
+
+    // 【v9】图片上传元素
+    this.uploadBtn = document.getElementById('uploadBtn');
+    this.imageInput = document.getElementById('imageInput');
+    this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    this.previewImg = document.getElementById('previewImg');
+    this.removeImageBtn = document.getElementById('removeImageBtn');
 
     // 绑定事件
     this.bindEvents();
@@ -103,11 +133,359 @@ class OrganizationalMirror {
     this.endSessionBtn?.addEventListener('click', () => {
       this.endSession();
     });
+
+    // 【v9】姓名弹窗事件
+    this.nameInput?.addEventListener('input', () => {
+      this.nameSubmitBtn.disabled = !this.nameInput.value.trim();
+    });
+
+    this.nameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && this.nameInput.value.trim()) {
+        e.preventDefault();
+        this.submitUserName();
+      }
+    });
+
+    this.nameSubmitBtn?.addEventListener('click', () => {
+      this.submitUserName();
+    });
+
+    // 【v9】侧边栏事件
+    this.newChatBtn?.addEventListener('click', () => {
+      this.startNewChat();
+    });
+
+    this.hamburgerBtn?.addEventListener('click', () => {
+      this.toggleSidebar();
+    });
+
+    // 点击遮罩关闭侧边栏
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('sidebar-overlay')) {
+        this.closeSidebar();
+      }
+    });
+
+    // 【v9】图片上传事件
+    this.uploadBtn?.addEventListener('click', () => {
+      this.imageInput.click();
+    });
+
+    this.imageInput?.addEventListener('change', (e) => {
+      this.handleImageSelect(e);
+    });
+
+    this.removeImageBtn?.addEventListener('click', () => {
+      this.clearPendingImage();
+    });
   }
 
   async init() {
-    // 不自动获取开场白，等待用户先输入
-    // 用户输入后再开始对话
+    // 【v9】检查本地存储的用户信息
+    const savedUser = localStorage.getItem('mirror_user');
+
+    if (savedUser) {
+      try {
+        this.currentUser = JSON.parse(savedUser);
+        this.onUserReady();
+      } catch (e) {
+        localStorage.removeItem('mirror_user');
+        this.showNameModal();
+      }
+    } else {
+      this.showNameModal();
+    }
+  }
+
+  // 【v9】显示姓名弹窗
+  showNameModal() {
+    this.nameModalOverlay.style.display = 'flex';
+    this.nameInput.focus();
+  }
+
+  // 【v9】隐藏姓名弹窗
+  hideNameModal() {
+    this.nameModalOverlay.style.display = 'none';
+  }
+
+  // 【v9】提交用户姓名
+  async submitUserName() {
+    const name = this.nameInput.value.trim();
+    const company = this.companyInput.value.trim();
+
+    if (!name) return;
+
+    this.nameSubmitBtn.disabled = true;
+    this.nameSubmitBtn.textContent = 'Loading...';
+
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, company })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        alert('Failed to create user: ' + data.error);
+        this.nameSubmitBtn.disabled = false;
+        this.nameSubmitBtn.textContent = 'Start Conversation';
+        return;
+      }
+
+      this.currentUser = data.user;
+      localStorage.setItem('mirror_user', JSON.stringify(this.currentUser));
+
+      this.hideNameModal();
+      this.onUserReady();
+
+    } catch (error) {
+      console.error('Error creating user:', error);
+      alert('Network error. Please try again.');
+      this.nameSubmitBtn.disabled = false;
+      this.nameSubmitBtn.textContent = 'Start Conversation';
+    }
+  }
+
+  // 【v9】用户就绪后的初始化
+  async onUserReady() {
+    // 显示用户名
+    if (this.sidebarUserName) {
+      this.sidebarUserName.textContent = this.currentUser.name;
+    }
+
+    // 加载历史会话
+    await this.loadSessions();
+  }
+
+  // 【v9】加载历史会话列表
+  async loadSessions() {
+    if (!this.currentUser?.id) return;
+
+    try {
+      const response = await fetch(`/api/sessions?user_id=${this.currentUser.id}`);
+      const data = await response.json();
+
+      if (data.sessions) {
+        this.sessions = data.sessions;
+        this.renderSessionList();
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    }
+  }
+
+  // 【v9】渲染会话列表
+  renderSessionList() {
+    if (!this.sidebarSessions) return;
+
+    if (this.sessions.length === 0) {
+      this.sidebarSessions.innerHTML = '<div class="sidebar-empty">No conversations yet</div>';
+      return;
+    }
+
+    this.sidebarSessions.innerHTML = this.sessions.map(session => {
+      const date = new Date(session.created_at);
+      const dateStr = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+      const title = session.title || 'New conversation';
+      const isActive = session.id === this.viewingSessionId;
+
+      return `
+        <div class="session-item ${isActive ? 'active' : ''}" data-id="${session.id}">
+          <span class="session-item-title">${this.escapeHtml(title)}</span>
+          <span class="session-item-date">${dateStr}</span>
+        </div>
+      `;
+    }).join('');
+
+    // 绑定点击事件
+    this.sidebarSessions.querySelectorAll('.session-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const sessionId = item.dataset.id;
+        this.viewSession(sessionId);
+      });
+    });
+  }
+
+  // 【v9】查看历史会话
+  async viewSession(sessionId) {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}`);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('Error loading session:', data.error);
+        return;
+      }
+
+      const session = data.session;
+
+      // 设置回看模式
+      this.isReplayMode = true;
+      this.viewingSessionId = sessionId;
+      this.appContainer.classList.add('replay-mode');
+
+      // 清空并渲染历史消息
+      this.chatMessages.innerHTML = '';
+      this.appContainer.classList.add('has-messages');
+
+      if (session.history && Array.isArray(session.history)) {
+        session.history.forEach(msg => {
+          this.addMessage(msg.content, msg.role === 'user' ? 'user' : 'ai');
+        });
+      }
+
+      // 更新侧边栏选中状态
+      this.renderSessionList();
+
+      // 添加回看提示横幅
+      this.showReplayBanner();
+
+      // 移动端关闭侧边栏
+      this.closeSidebar();
+
+      // 如果有发现卡，显示它
+      if (session.discovery_output) {
+        this.lastDiscoveryOutput = session.discovery_output;
+        this.lastPath = session.path;
+      }
+
+    } catch (error) {
+      console.error('Error viewing session:', error);
+    }
+  }
+
+  // 【v9】显示回看提示横幅
+  showReplayBanner() {
+    // 移除已有的横幅
+    const existingBanner = document.querySelector('.replay-banner');
+    if (existingBanner) existingBanner.remove();
+
+    const banner = document.createElement('div');
+    banner.className = 'replay-banner';
+    banner.innerHTML = `
+      <p>You are viewing a past conversation</p>
+      <button class="btn-primary" id="replayNewChatBtn">Start New Conversation</button>
+    `;
+    document.body.appendChild(banner);
+
+    document.getElementById('replayNewChatBtn')?.addEventListener('click', () => {
+      this.startNewChat();
+    });
+  }
+
+  // 【v9】隐藏回看横幅
+  hideReplayBanner() {
+    const banner = document.querySelector('.replay-banner');
+    if (banner) banner.remove();
+  }
+
+  // 【v9】开始新对话
+  startNewChat() {
+    this.isReplayMode = false;
+    this.viewingSessionId = null;
+    this.appContainer.classList.remove('replay-mode');
+    this.hideReplayBanner();
+    this.restart();
+    this.renderSessionList();
+    this.closeSidebar();
+  }
+
+  // 【v9】切换侧边栏
+  toggleSidebar() {
+    this.sidebar.classList.toggle('open');
+    this.hamburgerBtn.classList.toggle('open');
+
+    // 添加/移除遮罩
+    let overlay = document.querySelector('.sidebar-overlay');
+    if (this.sidebar.classList.contains('open')) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay show';
+        document.body.appendChild(overlay);
+      }
+    } else {
+      if (overlay) overlay.remove();
+    }
+  }
+
+  // 【v9】关闭侧边栏
+  closeSidebar() {
+    this.sidebar.classList.remove('open');
+    this.hamburgerBtn.classList.remove('open');
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (overlay) overlay.remove();
+  }
+
+  // 【v9】HTML 转义
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // 【v9】处理图片选择
+  handleImageSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 检查文件类型
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a JPG, PNG, or WebP image.');
+      return;
+    }
+
+    // 检查文件大小（5MB）
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('Image must be smaller than 5MB.');
+      return;
+    }
+
+    // 转换为 base64
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target.result;
+      this.pendingImage = { base64, file };
+
+      // 显示预览
+      this.previewImg.src = base64;
+      this.imagePreviewContainer.style.display = 'block';
+
+      // 更新发送按钮状态
+      this.updateSendButton();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // 【v9】清除待发送图片
+  clearPendingImage() {
+    this.pendingImage = null;
+    this.imageInput.value = '';
+    this.imagePreviewContainer.style.display = 'none';
+    this.previewImg.src = '';
+    this.updateSendButton();
+  }
+
+  // 【v9】构建包含图片的消息内容
+  buildMessageContent(text, imageBase64) {
+    if (!imageBase64) {
+      return text;
+    }
+
+    // 返回多模态内容格式
+    return [
+      { type: 'text', text: text || '' },
+      {
+        type: 'image_url',
+        image_url: { url: imageBase64 }
+      }
+    ];
   }
 
   autoResize() {
@@ -115,10 +493,6 @@ class OrganizationalMirror {
     this.userInput.style.height = Math.min(this.userInput.scrollHeight, 150) + 'px';
   }
 
-  updateSendButton() {
-    const hasContent = this.userInput.value.trim().length > 0;
-    this.sendBtn.disabled = !hasContent || this.isLoading;
-  }
 
   /**
    * 更新进度提示（自然语言，替代进度条）
@@ -213,7 +587,7 @@ class OrganizationalMirror {
     this.getAIResponse();
   }
 
-  addMessage(content, role, isHighlight = false) {
+  addMessage(content, role, isHighlight = false, hasImage = false) {
     // 添加第一条消息时切换到对话模式
     if (!this.appContainer.classList.contains('has-messages')) {
       this.appContainer.classList.add('has-messages');
@@ -228,7 +602,27 @@ class OrganizationalMirror {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.textContent = content;
+
+    // 【v9】处理包含图片的消息
+    if (Array.isArray(content)) {
+      // 多模态消息
+      content.forEach(item => {
+        if (item.type === 'image_url' && item.image_url?.url) {
+          const img = document.createElement('img');
+          img.src = item.image_url.url;
+          img.className = 'message-image';
+          img.alt = 'Uploaded image';
+          contentDiv.appendChild(img);
+        } else if (item.type === 'text' && item.text) {
+          const textNode = document.createElement('p');
+          textNode.textContent = item.text;
+          contentDiv.appendChild(textNode);
+        }
+      });
+    } else {
+      // 纯文本消息
+      contentDiv.textContent = content;
+    }
 
     messageDiv.appendChild(contentDiv);
 
@@ -276,23 +670,6 @@ class OrganizationalMirror {
     this.isLoading = false;
     this.updateSendButton();
     this.removeTypingIndicator();
-  }
-
-  async sendMessage() {
-    const content = this.userInput.value.trim();
-    if (!content || this.isLoading) return;
-
-    // 添加用户消息
-    this.addMessage(content, 'user');
-    this.history.push({ role: 'user', content });
-
-    // 清空输入框
-    this.userInput.value = '';
-    this.autoResize();
-    this.updateSendButton();
-
-    // 获取AI响应
-    await this.getAIResponse();
   }
 
   async getAIResponse(endRequested = false) {
@@ -429,9 +806,15 @@ class OrganizationalMirror {
             sessionId: this.sessionId,
             // 【v6】深度指标
             layer_sequence: layerSequence || [],
-            depth_metrics: depthMetrics || null
+            depth_metrics: depthMetrics || null,
+            // 【v9】关联用户
+            user_id: this.currentUser?.id || null
           })
         });
+
+        // 【v9】刷新会话列表
+        await this.loadSessions();
+
       } catch (error) {
         console.error('Failed to save session:', error);
       }
@@ -740,6 +1123,12 @@ ${output.redefined_problem || '—'}
     this.lastDiscoveryOutput = null;
     this.lastPath = null;
 
+    // 【v9】退出回看模式
+    this.isReplayMode = false;
+    this.viewingSessionId = null;
+    this.appContainer.classList.remove('replay-mode');
+    this.hideReplayBanner();
+
     // 重置UI
     this.chatMessages.innerHTML = '';
     this.appContainer.classList.remove('has-messages'); // 恢复欢迎界面
@@ -749,7 +1138,49 @@ ${output.redefined_problem || '—'}
     this.hideChoiceOptions();
     this.updateSessionHint(null);
 
+    // 【v9】更新侧边栏
+    this.renderSessionList();
+
     // 不自动获取开场白，等待用户输入
+  }
+
+  // 【v9】发送消息前检查回看模式
+  async sendMessage() {
+    // 在回看模式下不允许发送
+    if (this.isReplayMode) {
+      return;
+    }
+
+    const text = this.userInput.value.trim();
+    const hasImage = !!this.pendingImage;
+
+    // 至少需要文字或图片
+    if ((!text && !hasImage) || this.isLoading) return;
+
+    // 构建消息内容
+    const content = hasImage
+      ? this.buildMessageContent(text, this.pendingImage.base64)
+      : text;
+
+    // 添加用户消息（显示时需要特殊处理）
+    this.addMessage(content, 'user', false, hasImage);
+    this.history.push({ role: 'user', content });
+
+    // 清空输入框和图片
+    this.userInput.value = '';
+    this.clearPendingImage();
+    this.autoResize();
+    this.updateSendButton();
+
+    // 获取AI响应
+    await this.getAIResponse();
+  }
+
+  // 【v9】更新发送按钮状态（支持图片）
+  updateSendButton() {
+    const hasText = this.userInput.value.trim().length > 0;
+    const hasImage = !!this.pendingImage;
+    this.sendBtn.disabled = (!hasText && !hasImage) || this.isLoading;
   }
 }
 
