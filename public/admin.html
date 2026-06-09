@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <title>照见 - 统计后台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-card: #1a1a1a;
+      --text-primary: #e5e5e5;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --accent: #3b82f6;
+      --accent-light: #60a5fa;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #262626;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .logo span {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 1rem;
+      margin-left: 0.5rem;
+    }
+
+    .back-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+
+    .back-link:hover {
+      color: var(--accent-light);
+    }
+
+    /* 警告横幅 */
+    .warning-banner {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      color: var(--warning);
+      font-size: 0.875rem;
+    }
+
+    /* 面板标题 */
+    .panel-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: var(--text-primary);
+    }
+
+    /* 指标网格 */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .metric-card.highlight {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .metric-value {
+      display: block;
+      font-size: 2.5rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .metric-card.highlight .metric-value {
+      color: var(--accent-light);
+    }
+
+    .metric-label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .metric-sublabel {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* 深度分布图 */
+    .depth-distribution {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .distribution-title {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      height: 200px;
+      padding: 1rem 0;
+      gap: 0.5rem;
+    }
+
+    .bar-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+    }
+
+    .bar-wrapper {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .bar {
+      width: 60%;
+      min-width: 30px;
+      max-width: 60px;
+      background: var(--accent);
+      border-radius: 4px 4px 0 0;
+      transition: height 0.3s ease;
+      position: relative;
+    }
+
+    .bar.deep {
+      background: var(--success);
+    }
+
+    .bar-count {
+      position: absolute;
+      top: -1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .bar-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+
+    .bar-layer {
+      font-size: 0.625rem;
+      color: var(--text-muted);
+    }
+
+    /* 浅层空转警告 */
+    .shallow-alert {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .shallow-alert.has-warning {
+      border-color: var(--warning);
+      background: rgba(245, 158, 11, 0.05);
+    }
+
+    .shallow-alert h3 {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .shallow-alert .count {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--warning);
+    }
+
+    .shallow-alert .hint {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    /* 用途说明 */
+    .usage-note {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .usage-note h3 {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    .usage-note ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .usage-note li {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      padding: 0.5rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .usage-note li::before {
+      content: '•';
+      position: absolute;
+      left: 0;
+      color: var(--text-muted);
+    }
+
+    .usage-note li:first-child {
+      font-weight: 500;
+      color: var(--warning);
+    }
+
+    .usage-note li strong {
+      color: var(--text-primary);
+    }
+
+    /* 双栏布局 */
+    .two-columns {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 768px) {
+      .two-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Early 路径面板 */
+    .early-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .early-panel h3 {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    .early-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .early-stat:last-child {
+      border-bottom: none;
+    }
+
+    .early-stat .label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .early-stat .value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* 加载状态 */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+
+    /* 刷新按钮 */
+    .refresh-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .refresh-btn:hover {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    /* 最近对话列表 */
+    .recent-list {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .recent-list h3 {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    .recent-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+
+    .recent-item:last-child {
+      border-bottom: none;
+    }
+
+    .recent-item .depth {
+      font-weight: 500;
+      color: var(--accent-light);
+    }
+
+    .recent-item .depth.shallow {
+      color: var(--warning);
+    }
+
+    .recent-item .turns {
+      color: var(--text-muted);
+    }
+
+    .recent-item .date {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">照见 <span>统计后台</span></div>
+      <div>
+        <button class="refresh-btn" onclick="loadStats()">刷新数据</button>
+        <a href="/" class="back-link" style="margin-left: 1rem;">返回对话</a>
+      </div>
+    </header>
+
+    <div id="content">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    async function loadStats() {
+      const content = document.getElementById('content');
+      content.innerHTML = '<div class="loading">加载中...</div>';
+
+      try {
+        const response = await fetch(`${API_BASE}/api/stats/depth`);
+        const data = await response.json();
+        renderStats(data);
+      } catch (error) {
+        content.innerHTML = `<div class="warning-banner">加载失败: ${error.message}</div>`;
+      }
+    }
+
+    function renderStats(data) {
+      const { org, early } = data;
+      const content = document.getElementById('content');
+
+      let html = '';
+
+      // 样本警告
+      if (org.warning) {
+        html += `<div class="warning-banner">${org.warning}</div>`;
+      }
+
+      // 核心指标卡片
+      const totalOrgCount = org.total_count || org.sample_size || 0;
+      const hasDepthData = org.sample_size > 0;
+
+      html += `
+        <h2 class="panel-title">对话深度统计 (组织路径)</h2>
+        ${org.warning ? `<div class="warning-banner">${org.warning}</div>` : ''}
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-value">${org.avg_depth != null ? org.avg_depth : '--'}</span>
+            <span class="metric-label">平均深度</span>
+            <span class="metric-sublabel">${org.avg_depth_label || (hasDepthData ? '' : '暂无数据')}</span>
+          </div>
+          <div class="metric-card highlight">
+            <span class="metric-value">${org.broke_assumption_rate || '--'}</span>
+            <span class="metric-label">假设突破率</span>
+            <span class="metric-sublabel">${hasDepthData ? `${org.broke_assumption_count || 0} / ${org.sample_size} 场` : '暂无数据'}</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${org.reached_rule_rate || '--'}</span>
+            <span class="metric-label">规则到达率</span>
+            <span class="metric-sublabel">${hasDepthData ? `${org.reached_rule_count || 0} / ${org.sample_size} 场` : '暂无数据'}</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">${totalOrgCount}</span>
+            <span class="metric-label">总对话数</span>
+            <span class="metric-sublabel">org 路径${hasDepthData ? ` (${org.sample_size} 有深度数据)` : ''}</span>
+          </div>
+        </div>
+      `;
+
+      // 深度分布图
+      if (org.depth_distribution) {
+        const dist = org.depth_distribution;
+        const labels = org.depth_distribution_labels || {};
+        const maxCount = Math.max(...Object.values(dist), 1);
+
+        html += `
+          <div class="depth-distribution">
+            <div class="distribution-title">深度分布 (最深层级)</div>
+            <div class="bar-chart">
+        `;
+
+        for (let i = 1; i <= 6; i++) {
+          const count = dist[i] || 0;
+          const height = maxCount > 0 ? (count / maxCount) * 150 : 0;
+          const isDeep = i >= 4;
+
+          html += `
+            <div class="bar-item">
+              <div class="bar-wrapper">
+                <div class="bar ${isDeep ? 'deep' : ''}" style="height: ${height}px;">
+                  <span class="bar-count">${count}</span>
+                </div>
+              </div>
+              <div class="bar-label">${i}</div>
+              <div class="bar-layer">${labels[i] || ''}</div>
+            </div>
+          `;
+        }
+
+        html += `
+            </div>
+          </div>
+        `;
+      }
+
+      // 浅层空转警告
+      if (org.depth_vs_turns) {
+        const { shallow_high_turns_count, shallow_high_turns_rate } = org.depth_vs_turns;
+        const hasWarning = shallow_high_turns_count > 0;
+
+        html += `
+          <div class="shallow-alert ${hasWarning ? 'has-warning' : ''}">
+            <h3>${hasWarning ? '⚠️ 浅层空转警告' : '✓ 对话质量正常'}</h3>
+            <p>
+              <span class="count">${shallow_high_turns_count}</span> 场对话
+              (${shallow_high_turns_rate}) 轮数≥6 但深度≤3
+            </p>
+            ${hasWarning ? '<p class="hint">这意味着对话在浅层打转，提问话术可能需要调整</p>' : ''}
+          </div>
+        `;
+      }
+
+      // 两栏布局：用途说明 + Early 路径
+      html += `<div class="two-columns">`;
+
+      // 用途说明
+      html += `
+        <div class="usage-note">
+          <h3>📊 指标用途说明</h3>
+          <ul>
+            <li>这是观测仪表盘，不是 AI 的 KPI — 硬刷的深度是假的</li>
+            <li><strong>假设突破率高</strong> = 真在产生认知重构</li>
+            <li><strong>普遍卡在决策层</strong> = 假设追问话术需改进 (调 v5 提示词)</li>
+            <li><strong>max_depth 高的对话</strong> = 高质量种子案例</li>
+            <li><strong>深度 vs 轮数</strong>：轮数高但深度低 = 话术在浅层空转</li>
+          </ul>
+        </div>
+      `;
+
+      // Early 路径面板
+      html += `
+        <div class="early-panel">
+          <h3>早期路径统计</h3>
+          <div class="early-stat">
+            <span class="label">对话数</span>
+            <span class="value">${early.sample_size}</span>
+          </div>
+          <div class="early-stat">
+            <span class="label">产出实验数</span>
+            <span class="value">${early.qualified_count}</span>
+          </div>
+          <div class="early-stat">
+            <span class="label">达标率</span>
+            <span class="value">${early.qualified_rate}</span>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem;">
+            早期路径不使用六层深度，单独统计实验产出率
+          </p>
+        </div>
+      `;
+
+      html += `</div>`;
+
+      // 最近对话列表
+      if (org.depth_vs_turns && org.depth_vs_turns.recent && org.depth_vs_turns.recent.length > 0) {
+        html += `
+          <div class="recent-list">
+            <h3>最近对话 (org 路径)</h3>
+        `;
+
+        org.depth_vs_turns.recent.forEach(item => {
+          const isShallow = item.shallow_high_turns;
+          const date = new Date(item.timestamp).toLocaleString('zh-CN', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          html += `
+            <div class="recent-item">
+              <div>
+                <span class="depth ${isShallow ? 'shallow' : ''}">深度 ${item.max_depth}</span>
+                <span class="turns" style="margin-left: 1rem;">${item.turns} 轮</span>
+                ${isShallow ? '<span style="color: var(--warning); margin-left: 0.5rem;">⚠️</span>' : ''}
+              </div>
+              <span class="date">${date}</span>
+            </div>
+          `;
+        });
+
+        html += `</div>`;
+      }
+
+      content.innerHTML = html;
+    }
+
+    // 页面加载时获取数据
+    loadStats();
+  </script>
+</body>
+</html>

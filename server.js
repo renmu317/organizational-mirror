@@ -196,6 +196,59 @@ async function saveSessionToSupabase(session) {
 }
 
 // ============================================================
+// 【v8】从 Supabase 读取数据（用于统计）
+// ============================================================
+async function loadSessionsFromSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/sessions?select=*`, {
+      headers: {
+        'apikey': SUPABASE_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      console.error('[Supabase] 读取会话失败');
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('[Supabase] 读取会话错误:', error.message);
+    return null;
+  }
+}
+
+async function loadCasesFromSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/cases?select=*`, {
+      headers: {
+        'apikey': SUPABASE_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      console.error('[Supabase] 读取案例失败');
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('[Supabase] 读取案例错误:', error.message);
+    return null;
+  }
+}
+
+// ============================================================
 // 案例匹配
 // ============================================================
 function calculateMatchScore(caseData, userText, stage) {
@@ -874,10 +927,14 @@ app.post('/api/session/save', async (req, res) => {
 });
 
 // ============================================================
-// 统计接口
+// 统计接口（优先从 Supabase 读取）
 // ============================================================
-app.get('/api/stats', (req, res) => {
-  const cases = loadCaseLibrary();
+app.get('/api/stats', async (req, res) => {
+  // 优先从 Supabase 读取
+  let cases = await loadCasesFromSupabase();
+  if (!cases) {
+    cases = loadCaseLibrary();
+  }
 
   const stats = {
     total: cases.length,
@@ -885,19 +942,28 @@ app.get('/api/stats', (req, res) => {
     gap: cases.filter(c => c.completeness === 'gap').length,
     enriched: cases.filter(c => c.completeness === 'enriched').length,
     active: cases.filter(c => c.completeness === 'gap' || c.completeness === 'enriched').length,
-    highConfidence: cases.filter(c => c.insight_confidence === 'high').length
+    highConfidence: cases.filter(c => c.insight_confidence === 'high').length,
+    source: cases === loadCaseLibrary() ? 'local' : 'supabase'
   };
 
   res.json(stats);
 });
 
 // ============================================================
-// 对话深度统计
+// 对话深度统计（优先从 Supabase 读取）
 // ============================================================
-app.get('/api/stats/depth', (req, res) => {
-  const sessions = loadSessions();
+app.get('/api/stats/depth', async (req, res) => {
+  // 优先从 Supabase 读取
+  let sessions = await loadSessionsFromSupabase();
+  const source = sessions ? 'supabase' : 'local';
+  if (!sessions) {
+    sessions = loadSessions();
+  }
 
-  const orgSessions = sessions.filter(s =>
+  // 所有 org 路径会话
+  const allOrgSessions = sessions.filter(s => s.path === 'org');
+  // 有深度数据的 org 会话（用于计算深度统计）
+  const orgSessionsWithDepth = sessions.filter(s =>
     s.path === 'org' && s.depth_metrics && s.depth_metrics.max_depth > 0
   );
 
@@ -907,11 +973,30 @@ app.get('/api/stats/depth', (req, res) => {
     s.discovery_output.seven_day_experiment.experiment !== '待设计的最小实验'
   );
 
-  if (orgSessions.length === 0) {
+  const layerNames = {
+    1: '结果层', 2: '行为层', 3: '决策层',
+    4: '假设层', 5: '环境层', 6: '规则层'
+  };
+
+  // 如果没有深度数据，仍返回完整结构
+  if (orgSessionsWithDepth.length === 0) {
     return res.json({
+      source,
+      total_sessions: sessions.length,
       org: {
         sample_size: 0,
-        warning: '样本不足，暂无数据'
+        total_count: allOrgSessions.length,  // 总 org 会话数
+        warning: allOrgSessions.length > 0
+          ? `有 ${allOrgSessions.length} 场 org 对话，但缺少深度数据（v8 前创建）`
+          : '暂无 org 路径对话',
+        avg_depth: null,
+        avg_depth_label: '',
+        broke_assumption_rate: '--',
+        reached_rule_rate: '--',
+        broke_assumption_count: 0,
+        reached_rule_count: 0,
+        depth_distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
+        depth_distribution_labels: layerNames
       },
       early: {
         sample_size: earlySessions.length,
@@ -923,30 +1008,30 @@ app.get('/api/stats/depth', (req, res) => {
     });
   }
 
-  const depths = orgSessions.map(s => s.depth_metrics.max_depth);
+  const depths = orgSessionsWithDepth.map(s => s.depth_metrics.max_depth);
   const avgDepth = (depths.reduce((a, b) => a + b, 0) / depths.length).toFixed(1);
 
-  const brokeAssumptionCount = orgSessions.filter(s => s.depth_metrics.broke_assumption).length;
-  const reachedRuleCount = orgSessions.filter(s => s.depth_metrics.reached_rule).length;
+  const brokeAssumptionCount = orgSessionsWithDepth.filter(s => s.depth_metrics.broke_assumption).length;
+  const reachedRuleCount = orgSessionsWithDepth.filter(s => s.depth_metrics.reached_rule).length;
 
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   depths.forEach(d => {
     if (d >= 1 && d <= 6) distribution[d]++;
   });
 
-  const layerNames = {
-    1: '结果层', 2: '行为层', 3: '决策层',
-    4: '假设层', 5: '环境层', 6: '规则层'
-  };
-
   res.json({
+    source,
+    total_sessions: sessions.length,
     org: {
-      sample_size: orgSessions.length,
-      warning: orgSessions.length < 20 ? '样本不足（<20），仅供参考' : null,
+      sample_size: orgSessionsWithDepth.length,
+      total_count: allOrgSessions.length,
+      warning: orgSessionsWithDepth.length < 20 ? '样本不足（<20），仅供参考' : null,
       avg_depth: parseFloat(avgDepth),
       avg_depth_label: layerNames[Math.round(parseFloat(avgDepth))] || '',
-      broke_assumption_rate: ((brokeAssumptionCount / orgSessions.length) * 100).toFixed(1) + '%',
-      reached_rule_rate: ((reachedRuleCount / orgSessions.length) * 100).toFixed(1) + '%',
+      broke_assumption_rate: ((brokeAssumptionCount / orgSessionsWithDepth.length) * 100).toFixed(1) + '%',
+      broke_assumption_count: brokeAssumptionCount,
+      reached_rule_rate: ((reachedRuleCount / orgSessionsWithDepth.length) * 100).toFixed(1) + '%',
+      reached_rule_count: reachedRuleCount,
       depth_distribution: distribution,
       depth_distribution_labels: layerNames
     },

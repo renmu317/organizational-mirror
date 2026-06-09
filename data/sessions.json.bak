@@ -1,0 +1,312 @@
+[
+  {
+    "id": "S1780923373821",
+    "timestamp": "2026-06-08T12:56:13.821Z",
+    "surface_problem": "利润下滑",
+    "initial_explanation": "",
+    "history": [
+      {
+        "role": "assistant",
+        "content": "你好"
+      },
+      {
+        "role": "user",
+        "content": "利润下滑"
+      }
+    ],
+    "experiment_card": {
+      "hypothesis": "问题在定价",
+      "experiment": "问3个客户涨价反应",
+      "success_criteria": "2个说会买",
+      "time_horizon": "本周五",
+      "owner": "我"
+    },
+    "followup_result": {
+      "timestamp": "2026-06-08T12:56:18.142Z",
+      "result": "3个客户都说涨价10%会继续买，问题确实不在销售",
+      "improved": true,
+      "validated": true
+    },
+    "followup_due": "2026-06-15T12:56:13.821Z",
+    "insight_confidence": "high"
+  },
+  {
+    "id": "S1780942033257",
+    "timestamp": "2026-06-08T18:07:13.257Z",
+    "surface_problem": "没有客户",
+    "initial_explanation": "产品没有完全成型",
+    "history": [
+      {
+        "role": "assistant",
+        "content": "你好，感谢你愿意花时间来聊。我想先听听你——此刻，你公司/项目最大的挑战是什么？"
+      },
+      {
+        "role": "user",
+        "content": "没有客户"
+      },
+      {
+        "role": "assistant",
+        "content": "明白了，还没客户，那现在是想法阶段还是已经做了点东西出来？"
+      },
+      {
+        "role": "user",
+        "content": "产品没有完全成型"
+      },
+      {
+        "role": "assistant",
+        "content": "在你跟任何人聊之前，先做个预测——如果现在去找5个目标客户聊聊，你觉得会有几个愿意为它付钱？"
+      },
+      {
+        "role": "user",
+        "content": "有5个人感兴趣"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯，5个人都感兴趣——那在你看来，是不是得先把产品做出来，才能去验证他们是不是真的会付钱？"
+      },
+      {
+        "role": "user",
+        "content": "是的"
+      },
+      {
+        "role": "assistant",
+        "content": "那在产品做完之前，你能拿什么最小的东西放到一个真实客户面前，就知道他要不要？比如一个演示、一个价格清单、或者一个承诺书之类的？"
+      },
+      {
+        "role": "user",
+        "content": "做一个demo，每人付100"
+      },
+      {
+        "role": "assistant",
+        "content": "好，那对你来说，出现什么具体的信号、来自谁，才算验证成功？比如：5个人里有几个付了钱，才算你心里有底？给个数字加一个时间。"
+      }
+    ],
+    "discovery_output": {
+      "current_challenge": "没有客户",
+      "core_assumption": "待验证",
+      "challenged_assumption": "待验证",
+      "prediction_vs_reality": "待验证",
+      "success_definition": "待定义",
+      "redefined_problem": "没有客户",
+      "seven_day_experiment": {
+        "hypothesis": "待填写",
+        "experiment": "待设计",
+        "success_criteria": "待定义",
+        "time_horizon": "7天内",
+        "owner": "待确认"
+      }
+    },
+    "followup_result": null,
+    "followup_due": "2026-06-15T18:07:13.257Z"
+  },
+  {
+    "id": "S1780942469530",
+    "timestamp": "2026-06-08T18:14:29.530Z",
+    "surface_problem": "债务严重",
+    "initial_explanation": "客户严重下滑",
+    "history": [
+      {
+        "role": "assistant",
+        "content": "你好，感谢你愿意花时间来聊。我想先听听你——此刻，你公司/项目最大的挑战是什么？"
+      },
+      {
+        "role": "user",
+        "content": "债务严重"
+      },
+      {
+        "role": "assistant",
+        "content": "债务严重，这听起来确实很重。能多说说吗——这个债务，是来自前期的投入、运营的缺口，还是其他什么原因？"
+      },
+      {
+        "role": "user",
+        "content": "客户严重下滑"
+      },
+      {
+        "role": "assistant",
+        "content": "明白了。债务是结果，客户下滑才是源头。\n\n在你看来，是什么导致了客户下滑？你心里那句“因为……所以……”是什么？"
+      },
+      {
+        "role": "user",
+        "content": "因为行业不好，竞争激烈，成本太高，客户流失"
+      },
+      {
+        "role": "assistant",
+        "content": "你提到了好几条因果链。如果顺着你心里最重要的那条往下走——行业不好，导致竞争激烈，竞争激烈导致成本太高，成本太高导致客户流失——是这样一条链吗？还是说，哪个环节在你看来是更根本的“因为”？"
+      },
+      {
+        "role": "user",
+        "content": "竞争激烈"
+      },
+      {
+        "role": "assistant",
+        "content": "好，竞争激烈是核心。\n\n那我们聚焦到“竞争激烈”这件事上——这段时间，你流失的客户，他们主要是去了哪一类竞争对手？是价格更低的，还是服务更快的，还是别的什么？"
+      },
+      {
+        "role": "user",
+        "content": "价格更低的"
+      },
+      {
+        "role": "assistant",
+        "content": "明白了。价格竞争。\n\n那我们再盯一个点——在你流失的客户里，他们转向价格更低的对手时，每单的平均金额，跟你原来的单子比，是明显变小了，还是差不多？"
+      }
+    ],
+    "discovery_output": {
+      "current_challenge": "债务严重",
+      "core_assumption": "待验证",
+      "challenged_assumption": "待验证",
+      "prediction_vs_reality": "待验证",
+      "success_definition": "待定义",
+      "redefined_problem": "债务严重",
+      "seven_day_experiment": {
+        "hypothesis": "待填写",
+        "experiment": "待设计",
+        "success_criteria": "待定义",
+        "time_horizon": "7天内",
+        "owner": "待确认"
+      }
+    },
+    "followup_result": null,
+    "followup_due": "2026-06-15T18:14:29.530Z"
+  },
+  {
+    "id": "S1780950813860",
+    "timestamp": "2026-06-08T20:33:33.860Z",
+    "surface_problem": "创业初期，需要客户",
+    "initial_explanation": "3个",
+    "history": [
+      {
+        "role": "assistant",
+        "content": "你好，感谢你愿意花时间来聊。我想先听听你——此刻，你公司/项目最大的挑战是什么？"
+      },
+      {
+        "role": "user",
+        "content": "创业初期，需要客户"
+      },
+      {
+        "role": "assistant",
+        "content": "明白。那在你看来，你感觉如果现在去找5个目标客户聊，大概有几个会愿意为你的想法付钱？"
+      },
+      {
+        "role": "user",
+        "content": "3个"
+      },
+      {
+        "role": "assistant",
+        "content": "这个直觉挺有意思的。那在产品完全做出来之前，你觉得有没有什么东西——哪怕一个简单的演示、几张图，或者一段描述——能先拿给他们看看，来试一下这个感觉对不对？"
+      },
+      {
+        "role": "user",
+        "content": "已经给了，3个人有兴趣，想看产品"
+      },
+      {
+        "role": "assistant",
+        "content": "好，那这已经是一个不错的信号了。为了不走偏，你心里有没有一个具体的标准——出现什么情况，就说明这个方向验证成功了？比如一个数字，加一个时间。"
+      },
+      {
+        "role": "user",
+        "content": "一周出$300的订单，就是验证初期成功"
+      },
+      {
+        "role": "assistant",
+        "content": "好，这很清晰。那未来7天，你具体打算做什么最小的事，来验证一周能不能出300美元的订单？"
+      },
+      {
+        "role": "user",
+        "content": "做一场演示会，$100咨询费，3个客户愿意来"
+      },
+      {
+        "role": "assistant",
+        "content": "这次对话很有收获，你带走了一个新的问题和一个可验证的方向。"
+      }
+    ],
+    "discovery_output": {
+      "current_challenge": "创业初期，需要客户",
+      "core_assumption": "得先做出完整产品，才能吸引客户付费",
+      "challenged_assumption": "在做出完整产品前，可以用最小化的演示+收费咨询来验证客户付费意愿",
+      "prediction_vs_reality": "预测5个客户中3个愿意付钱 → 待验证：3个客户是否愿意为一场演示会支付100美元咨询费",
+      "success_definition": "7天内，3个客户愿意支付100美元咨询费参加演示会",
+      "redefined_problem": "从'需要客户'转变为'验证3个客户是否愿意为演示会支付100美元咨询费'",
+      "seven_day_experiment": {
+        "hypothesis": "3个对产品感兴趣的客户愿意支付100美元咨询费来参加一场演示会",
+        "experiment": "未来7天内，联系3个感兴趣客户，邀请他们参加一场演示会，并收取每人100美元咨询费",
+        "success_criteria": "3个客户都愿意支付并参加",
+        "time_horizon": "7天",
+        "owner": "创业者本人"
+      }
+    },
+    "followup_result": null,
+    "followup_due": "2026-06-15T20:33:33.860Z"
+  },
+  {
+    "id": "S1780959158670",
+    "timestamp": "2026-06-08T22:52:38.670Z",
+    "surface_problem": "客户流失30%",
+    "initial_explanation": "",
+    "history": [
+      {
+        "role": "assistant",
+        "content": "你好"
+      },
+      {
+        "role": "user",
+        "content": "客户流失30%"
+      }
+    ],
+    "discovery_output": {
+      "seven_day_experiment": {
+        "experiment": "约5个客户聊"
+      }
+    },
+    "path": "org",
+    "followup_result": null,
+    "followup_due": "2026-06-15T22:52:38.670Z",
+    "depth_metrics": {
+      "layer_sequence": [
+        "result",
+        "behavior",
+        "decision",
+        "assumption",
+        "rule"
+      ],
+      "max_depth": 6,
+      "broke_assumption": true,
+      "reached_rule": true,
+      "turns": 5
+    }
+  },
+  {
+    "id": "S1780959203003",
+    "timestamp": "2026-06-08T22:53:23.003Z",
+    "surface_problem": "测试",
+    "initial_explanation": "",
+    "history": [
+      {
+        "role": "user",
+        "content": "测试"
+      }
+    ],
+    "discovery_output": {
+      "seven_day_experiment": {
+        "experiment": "测试"
+      }
+    },
+    "path": "org",
+    "followup_result": null,
+    "followup_due": "2026-06-15T22:53:23.003Z",
+    "depth_metrics": {
+      "layer_sequence": [
+        "result",
+        "behavior",
+        "behavior",
+        "behavior",
+        "behavior",
+        "behavior",
+        "behavior"
+      ],
+      "max_depth": 2,
+      "broke_assumption": false,
+      "reached_rule": false,
+      "turns": 7
+    }
+  }
+]
