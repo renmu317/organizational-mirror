@@ -913,7 +913,17 @@ app.post('/api/respond', async (req, res) => {
 
     // 如果会话完成
     if (shouldEnd) {
-      response.discovery_output = parsed.discovery_output || buildDefaultDiscoveryOutput(state, history);
+      // 【v12.1 fix】确保 discovery_output 格式与 path 匹配
+      let discoveryOutput = parsed.discovery_output;
+
+      // 如果是 strategy 路径但 AI 返回了 org 格式（有 current_problem 没有 decision），强制用正确格式
+      if (state.path === 'strategy' && discoveryOutput && discoveryOutput.current_problem && !discoveryOutput.decision) {
+        console.log('[v12.1] strategy 路径但 AI 返回了 org 格式，强制使用 buildDefaultDiscoveryOutput');
+        discoveryOutput = null;
+      }
+
+      response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history);
+      console.log(`[v12.1] 收尾: path=${state.path}, discovery_output 字段:`, Object.keys(response.discovery_output));
       response.close_reason = closeReason; // 【v8】记录收尾原因
 
       // 计算深度指标（仅 org 路径）
