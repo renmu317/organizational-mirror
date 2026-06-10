@@ -804,12 +804,13 @@ function detectPressureTest(userReply) {
 // ============================================================
 function detectValueEvaluation(userReply) {
   const r = (userReply || '').toLowerCase();
-  // 用户说出价值/损失/代价/机会（带数值更好）
+  // 用户说出价值/损失/代价/机会（必须带数值/量化表述）
   const valueKeywords = ['损失', '代价', '机会', '值', '万', '成本', '收益', '价值', '赚', '亏', '省'];
   const hasValueWord = valueKeywords.some(k => r.includes(k));
-  // 如果有数字更好，但不强制
+  // 【v14.3 fix】必须有数字或量化表述，去掉"长度>20"出口
   const hasNumber = /\d/.test(r);
-  return hasValueWord && (hasNumber || r.length > 20);
+  const hasQuantifier = /[几多少大小高低]/.test(r) || r.includes('倍') || r.includes('半');
+  return hasValueWord && (hasNumber || hasQuantifier);
 }
 
 // ============================================================
@@ -1004,9 +1005,20 @@ app.post('/api/respond', async (req, res) => {
         finalReply = `很好，你已经有了一个可以在 7 天内验证的实验计划。去执行吧，回来告诉我结果。`;
       } else if (orgCap) {
         finalReply = `我们聊了很多。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层。你可以带着这些思考，之后再继续探索。`;
-      } else if (strategyReady || strategyCap) {
-        // 【v12】策略型兜底收尾语
+      } else if (strategyReady) {
+        // 【v14.3】策略型完整收尾（压力测试+价值+预测都完成）
         finalReply = `你已经把这个决策想清楚了${state.weakest_link ? `：最关键的是"${state.weakest_link}"这一环` : ''}。接下来就去做，做完回来告诉我结果。`;
+      } else if (strategyCap) {
+        // 【v14.3 fix】16轮兜底但未挖透，诚实收尾
+        const hasValue = state.has_value_evaluation;
+        const hasPred = state.has_prediction;
+        let depth = [];
+        if (state.has_pressure_test) depth.push('压力测试');
+        if (hasValue) depth.push('价值评估');
+        if (hasPred) depth.push('预测');
+        const depthStr = depth.length > 0 ? depth.join('、') : '初步梳理';
+        const missingStr = (!hasValue || !hasPred) ? '，价值和预测还没深入聊到' : '';
+        finalReply = `我们聊了不少，你已经看清了${state.weakest_link ? `"${state.weakest_link}"这个承重点` : '关键环节'}（${depthStr}）${missingStr}。可以带着这些先想想，有需要再继续。`;
       } else if (userRequestedEnd) {
         finalReply = `好的，我们就聊到这里。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层${state.world_rule ? `，你提到的规则是"${state.world_rule.slice(0, 30)}..."` : ''}。`;
       }
@@ -1045,8 +1057,8 @@ app.post('/api/respond', async (req, res) => {
         discoveryOutput = null;
       }
 
-      response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history);
-      console.log(`[v12.1] 收尾: path=${state.path}, discovery_output 字段:`, Object.keys(response.discovery_output));
+      response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history, closeReason);
+      console.log(`[v12.1] 收尾: path=${state.path}, reason=${closeReason}, discovery_output 字段:`, Object.keys(response.discovery_output));
       response.close_reason = closeReason; // 【v8】记录收尾原因
 
       // 计算深度指标（仅 org 路径）
@@ -1107,9 +1119,12 @@ app.post('/api/respond', async (req, res) => {
 // ============================================================
 // 构建默认发现输出
 // ============================================================
-function buildDefaultDiscoveryOutput(state, history = []) {
+function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
   const userMessages = history.filter(m => m.role === 'user').map(m => m.content);
   const aiMessages = history.filter(m => m.role === 'assistant').map(m => m.content);
+
+  // 【v14.3 fix】strategyCap 兜底时，未挖到的字段显示"本次未深入"而非 null
+  const isStrategyCap = closeReason === 'strategy_cap';
 
   const originalProblem = state.originalProblem || userMessages[0] || '未记录';
 
@@ -1339,16 +1354,33 @@ function buildDefaultDiscoveryOutput(state, history = []) {
       strategyHook = `你这个决策想清楚了——而你刚才那条"${hiddenAssumption.slice(0, 20)}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
     }
 
+    // 【v14.3 fix】strategyCap 时，未挖到的字段显示"本次未深入"
+    const notDeep = isStrategyCap ? '本次未深入' : null;
+
+    // 提取 prediction
+    const pred = extractPrediction();
+    // 如果是 strategyCap 且 prediction 为空或字段缺失，填充"本次未深入"
+    let finalPrediction = pred;
+    if (isStrategyCap && (!pred || (!pred.stake && !pred.object))) {
+      finalPrediction = {
+        object: pred?.object || notDeep,
+        if_unchanged: pred?.if_unchanged || notDeep,
+        if_changed: pred?.if_changed || notDeep,
+        stake: pred?.stake || notDeep,
+        verify_window: pred?.verify_window || notDeep
+      };
+    }
+
     return {
       decision: state.originalProblem || userMessages[0] || '未记录',
-      target_outcome: state.target_outcome || fallback.target || null,
+      target_outcome: state.target_outcome || fallback.target || (isStrategyCap ? notDeep : null),
       decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : (fallback.chain.length > 0 ? fallback.chain : null),
-      weakest_link: state.weakest_link || fallback.weakest || null,
-      hidden_assumption: state.hidden_assumption || fallback.assumption || null,
-      pressure_test_result: state.pressure_test_result || fallback.pressure || null,
-      next_step: state.next_step || fallback.nextStep || null,
-      prediction: extractPrediction(),  // 【v12.2】可证伪预测
-      next_gap_hook: strategyHook
+      weakest_link: state.weakest_link || fallback.weakest || (isStrategyCap ? notDeep : null),
+      hidden_assumption: state.hidden_assumption || fallback.assumption || (isStrategyCap ? notDeep : null),
+      pressure_test_result: state.pressure_test_result || fallback.pressure || (isStrategyCap ? notDeep : null),
+      next_step: state.next_step || fallback.nextStep || (isStrategyCap ? notDeep : null),
+      prediction: finalPrediction,  // 【v12.2】可证伪预测
+      next_gap_hook: isStrategyCap ? null : strategyHook  // strategyCap 时不给机会钩（没资格）
     };
   }
 
