@@ -342,29 +342,33 @@ function searchCases(history, stage) {
 // ============================================================
 // DeepSeek API 调用（v9：支持图片消息）
 // ============================================================
-async function callDeepSeek(systemPrompt, messages, hasImage = false) {
+async function callDeepSeek(systemPrompt, messages, hasImage = false, retryWithoutJsonFormat = false) {
   if (!DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY not configured');
   }
 
   // 【v9】根据是否有图片选择模型
-  // 注意：DeepSeek 目前 vision 模型可能需要不同配置
   const model = hasImage ? DEEPSEEK_VISION_MODEL : 'deepseek-chat';
+
+  // 【v14 fix】重试时，在 system prompt 末尾强调 JSON 格式
+  let finalSystemPrompt = systemPrompt;
+  if (retryWithoutJsonFormat) {
+    finalSystemPrompt += '\n\n【重要】请务必只输出 JSON 对象，格式为 {"reply":"你的回复",...}，不要输出任何其他文字。';
+  }
 
   // 【v12.1 fix】构建请求体
   const requestBody = {
     model: model,
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: finalSystemPrompt },
       ...messages
     ],
     temperature: 0.7,
     max_tokens: 1500
   };
 
-  // 【v12.1 fix】非 vision 模式下强制 JSON 输出，防止 JSON.parse 失败导致状态机瘫痪
-  // vision 模型可能不支持 response_format，故含图轮次不加
-  if (!hasImage) {
+  // 【v14 fix】非 vision 模式下使用 JSON 输出，但如果是重试则不加（可能和复杂提示词冲突）
+  if (!hasImage && !retryWithoutJsonFormat) {
     requestBody.response_format = { type: 'json_object' };
   }
 
@@ -383,7 +387,21 @@ async function callDeepSeek(systemPrompt, messages, hasImage = false) {
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  const content = data.choices[0].message.content;
+
+  // 【v14 debug】记录 API 响应
+  console.log(`[API response] length: ${content?.length || 0}, preview: ${(content || '').slice(0, 100)}`);
+
+  // 【v14 fix】如果内容为空或只有空格，且还没重试过，则不带 response_format 重试一次
+  if (!content || content.trim().length === 0) {
+    if (!retryWithoutJsonFormat) {
+      console.log('[API response] EMPTY, retrying without response_format...');
+      return callDeepSeek(systemPrompt, messages, hasImage, true);
+    }
+    console.error('[API response] EMPTY even after retry! Full response:', JSON.stringify(data).slice(0, 500));
+  }
+
+  return content;
 }
 
 // 【v9】检测消息中是否包含图片
