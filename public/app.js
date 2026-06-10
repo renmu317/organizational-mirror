@@ -938,7 +938,7 @@ class OrganizationalMirror {
   }
 
   /**
-   * 【v12.1】构建策略型输出卡（增强）
+   * 【v12.2】构建策略型输出卡（含可证伪预测）
    */
   buildStrategyPathCard(output) {
     // 决策链渲染
@@ -985,6 +985,9 @@ class OrganizationalMirror {
       </div>
     `;
 
+    // 【v12.2】可证伪预测
+    html += this.buildPredictionSection(output.prediction);
+
     // 【v11】机会钩
     if (output.next_gap_hook) {
       html += `
@@ -996,6 +999,45 @@ class OrganizationalMirror {
     }
 
     return html;
+  }
+
+  /**
+   * 【v12.2】构建可证伪预测栏
+   */
+  buildPredictionSection(prediction) {
+    if (!prediction) {
+      return '';
+    }
+
+    const placeholder = '<span class="prediction-placeholder">待你填</span>';
+
+    return `
+      <div class="card-section prediction-section">
+        <h3>你的预测（可验证）</h3>
+        <div class="prediction-grid">
+          <div class="prediction-field">
+            <label>预测指标</label>
+            <p>${prediction.object || placeholder}</p>
+          </div>
+          <div class="prediction-field">
+            <label>如果不改</label>
+            <p>${prediction.if_unchanged || placeholder}</p>
+          </div>
+          <div class="prediction-field">
+            <label>如果改变</label>
+            <p>${prediction.if_changed || placeholder}</p>
+          </div>
+          <div class="prediction-field">
+            <label>价值/代价</label>
+            <p>${prediction.stake || placeholder}</p>
+          </div>
+          <div class="prediction-field">
+            <label>验证时间</label>
+            <p>${prediction.verify_window || placeholder}</p>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   /**
@@ -1066,6 +1108,11 @@ class OrganizationalMirror {
         </div>
       </div>
     `;
+
+    // 【v12.2】可证伪预测（仅 actionable，no_experiment=true 说明是 retrospective）
+    if (output.prediction && !output.no_experiment) {
+      html += this.buildPredictionSection(output.prediction);
+    }
 
     // 【v11】机会钩（仅当有值时显示）
     if (output.next_gap_hook) {

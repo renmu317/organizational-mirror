@@ -1,7 +1,7 @@
 /*
  * 照见 - 暖白 · 精品咨询室
  * Warm white theme with restrained gold accents
- * v9.0 - Sidebar + User Management
+ * v11.0 - 问题/机会双脸循环
  */
 
 :root {
@@ -707,6 +707,79 @@ body {
   margin-top: 24px;
   padding-top: 20px;
   border-top: 1px solid var(--line);
+}
+
+/* 【v12.2】可证伪预测样式 */
+.prediction-section {
+  margin-top: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.05), rgba(212, 175, 55, 0.02));
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 8px;
+}
+
+.prediction-section h3 {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.prediction-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.prediction-field {
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.prediction-field label {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.prediction-field p {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.prediction-placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* 【v11】机会钩样式 */
+.card-field.next-gap-hook {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+}
+
+.card-field.next-gap-hook label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.card-field.next-gap-hook .pull-style {
+  font-style: italic;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .experiment-section h3 {

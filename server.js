@@ -1047,6 +1047,99 @@ function buildDefaultDiscoveryOutput(state, history = []) {
     return assumptions.length > 0 ? assumptions.slice(0, 3) : [null];
   };
 
+  // 【v12.2】提取可证伪预测（只用用户说过的内容，不编造）
+  const extractPrediction = () => {
+    // 提取预测对象（什么指标）—— 找包含数字+人/个/约的表述
+    let object = null;
+    for (const msg of userMessages) {
+      const match = msg.match(/(\d+[个人位].*?(?:约|签|转化|1对1|报名))|(?:约|签|转化).*?(\d+[个人位])/);
+      if (match) {
+        object = (match[1] || match[2] || '').slice(0, 50);
+        break;
+      }
+    }
+    if (!object) {
+      // 备用：找"几个""多少"
+      for (const msg of userMessages) {
+        if (msg.includes('约1对1') || msg.includes('转化')) {
+          object = msg.match(/(约.*?1对1|转化.*?\d+|几个.*?约)/)?.[0]?.slice(0, 50) || null;
+          if (object) break;
+        }
+      }
+    }
+
+    // 提取"如果不改"的预期 —— 找包含"0-1""现在""只有"的负面预期
+    let if_unchanged = null;
+    for (const msg of userMessages) {
+      if ((msg.includes('0-1') || msg.includes('只有') || msg.includes('现在可能'))
+          && /\d/.test(msg)) {
+        const match = msg.match(/(?:现在|只有|可能).*?(\d+[-~到]?\d*[个人位]?)/);
+        if_unchanged = match ? match[0].slice(0, 60) : msg.slice(0, 60);
+        break;
+      }
+    }
+
+    // 提取"如果改变"的预期 —— 找包含"至少""能有"的正面预期
+    let if_changed = null;
+    for (const msg of userMessages) {
+      if ((msg.includes('至少') || msg.includes('能有') || msg.includes('希望'))
+          && /\d/.test(msg) && !msg.includes('损失')) {
+        const match = msg.match(/(?:至少|能有|希望).*?(\d+[个人位]?)/);
+        if_changed = match ? match[0].slice(0, 60) : null;
+        break;
+      }
+    }
+
+    // 提取价值/代价 —— 找包含"万""损失""机会"的金额表述
+    let stake = null;
+    for (const msg of userMessages) {
+      const match = msg.match(/(?:避免|损失|抓住?|机会|成本|价值).*?(\d+[万元])/);
+      if (match) {
+        stake = match[0].slice(0, 60);
+        break;
+      }
+      // 备用：直接找金额
+      const amountMatch = msg.match(/(\d+[万元].*?(?:损失|机会|成本))|(?:损失|机会|成本).*?(\d+[万元])/);
+      if (amountMatch) {
+        stake = (amountMatch[1] || amountMatch[2] || '').slice(0, 60);
+        break;
+      }
+    }
+
+    // 提取验证时间窗 —— 找具体时间点
+    let verify_window = null;
+    for (const msg of userMessages) {
+      // 优先找"周五后48小时"这种完整表述
+      const fullMatch = msg.match(/(周[一二三四五六日天]后?\d*小时?内?|明天|后天|今天|\d+天内|\d+小时内)/);
+      if (fullMatch) {
+        verify_window = fullMatch[1];
+        break;
+      }
+    }
+    if (!verify_window) {
+      // 备用：单独的时间词
+      for (const msg of userMessages) {
+        const match = msg.match(/(周[一二三四五六日天]|48小时|24小时|7天|一周)/);
+        if (match) {
+          verify_window = match[1];
+          break;
+        }
+      }
+    }
+
+    // 只有至少有一个非空字段才返回 prediction
+    if (object || if_unchanged || if_changed || stake || verify_window) {
+      return {
+        object: object || null,
+        if_unchanged: if_unchanged || null,
+        if_changed: if_changed || null,
+        stake: stake || null,
+        verify_window: verify_window || null
+      };
+    }
+    return null;
+  };
+
   // 【v12.1】strategy 路径（增强）
   if (state.path === 'strategy') {
     // 生成机会钩
@@ -1059,14 +1152,15 @@ function buildDefaultDiscoveryOutput(state, history = []) {
 
     return {
       decision: state.originalProblem || userMessages[0] || '未记录',
-      target_outcome: state.target_outcome || null,                    // ★ 新增
+      target_outcome: state.target_outcome || null,
       decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : null,
       weakest_link: state.weakest_link || null,
       hidden_assumption: state.hidden_assumption || null,
-      pressure_test_result: state.pressure_test_result || null,        // ★ 新增
+      pressure_test_result: state.pressure_test_result || null,
       next_step: userMessages.find(m =>
         m.includes('先') || m.includes('第一步') || m.includes('接下来')
       )?.slice(0, 100) || null,
+      prediction: extractPrediction(),  // 【v12.2】可证伪预测
       next_gap_hook: strategyHook
     };
   }
@@ -1118,7 +1212,7 @@ function buildDefaultDiscoveryOutput(state, history = []) {
     };
   }
 
-  // org · actionable（有实验卡）
+  // org · actionable（有实验卡 + 可证伪预测）
   const exp = findExperimentContent();
   return {
     current_problem: originalProblem,
@@ -1135,6 +1229,7 @@ function buildDefaultDiscoveryOutput(state, history = []) {
       time_horizon: '7天',
       owner: '你'
     },
+    prediction: extractPrediction(),  // 【v12.2】可证伪预测
     next_gap_hook  // 【v11】出口机会钩
   };
 }
