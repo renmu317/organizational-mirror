@@ -1819,7 +1819,13 @@ app.get('/api/stats/depth', async (req, res) => {
 
   const earlySessions = sessions.filter(s => s.path === 'early');
 
-  // 未分类会话（path 为空或 unknown）
+  // 【v16】strategy 路径统计
+  const strategySessions = sessions.filter(s => s.path === 'strategy');
+  const strategyWithRule = strategySessions.filter(s =>
+    s.discovery_output?.world_rule && s.discovery_output.world_rule.trim()
+  );
+
+  // 未分类会话（path 为空或 unknown，排除 org/early/strategy）
   const unclassifiedSessions = sessions.filter(s => !s.path || s.path === 'unknown');
   const earlyWithExperiment = earlySessions.filter(s =>
     s.discovery_output?.seven_day_experiment?.experiment &&
@@ -1858,6 +1864,13 @@ app.get('/api/stats/depth', async (req, res) => {
         qualified_rate: earlySessions.length > 0
           ? ((earlyWithExperiment.length / earlySessions.length) * 100).toFixed(1) + '%'
           : '0%'
+      },
+      strategy: {
+        sample_size: strategySessions.length,
+        with_rule_count: strategyWithRule.length,
+        with_rule_rate: strategySessions.length > 0
+          ? ((strategyWithRule.length / strategySessions.length) * 100).toFixed(1) + '%'
+          : '0%'
       }
     });
   }
@@ -1895,6 +1908,13 @@ app.get('/api/stats/depth', async (req, res) => {
       qualified_count: earlyWithExperiment.length,
       qualified_rate: earlySessions.length > 0
         ? ((earlyWithExperiment.length / earlySessions.length) * 100).toFixed(1) + '%'
+        : '0%'
+    },
+    strategy: {
+      sample_size: strategySessions.length,
+      with_rule_count: strategyWithRule.length,
+      with_rule_rate: strategySessions.length > 0
+        ? ((strategyWithRule.length / strategySessions.length) * 100).toFixed(1) + '%'
         : '0%'
     }
   });

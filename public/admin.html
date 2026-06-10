@@ -574,7 +574,7 @@
 
     // 渲染总体统计
     function renderOverallStats(data) {
-      const { org, early, total_sessions, unclassified } = data;
+      const { org, early, strategy, total_sessions, unclassified } = data;
       document.getElementById('overallStats').innerHTML = `
         <div class="metrics-grid" style="margin-bottom: 2rem;">
           <div class="metric-card">
@@ -588,6 +588,10 @@
           <div class="metric-card">
             <span class="metric-value">${early?.sample_size || 0}</span>
             <span class="metric-label">Early Path</span>
+          </div>
+          <div class="metric-card" style="border-color: #6366f1;">
+            <span class="metric-value" style="color: #818cf8;">${strategy?.sample_size || 0}</span>
+            <span class="metric-label">Strategy Path</span>
           </div>
           ${unclassified > 0 ? `
           <div class="metric-card" style="border-color: var(--warning);">
@@ -606,6 +610,10 @@
           <div class="metric-card">
             <span class="metric-value" style="color: var(--warning);">${org?.reached_rule_rate || '--'}</span>
             <span class="metric-label">Reached Rule</span>
+          </div>
+          <div class="metric-card" style="border-color: #6366f1;">
+            <span class="metric-value" style="color: #818cf8;">${strategy?.with_rule_rate || '--'}</span>
+            <span class="metric-label">Strategy Rule Rate</span>
           </div>
         </div>
       `;
@@ -903,7 +911,7 @@
 
     // 渲染统计
     function renderStats(data) {
-      const { org, early, total_sessions, unclassified } = data;
+      const { org, early, strategy, total_sessions, unclassified } = data;
       const hasDepthData = org.sample_size > 0;
       const depthLabels = org.depth_distribution_labels || {
         1: 'Result', 2: 'Behavior', 3: 'Decision',
@@ -930,6 +938,10 @@
           <div class="metric-card">
             <span class="metric-value">${early.sample_size || 0}</span>
             <span class="metric-label">Early Path</span>
+          </div>
+          <div class="metric-card" style="border-color: #6366f1;">
+            <span class="metric-value" style="color: #818cf8;">${strategy?.sample_size || 0}</span>
+            <span class="metric-label">Strategy Path</span>
           </div>
           <div class="metric-card" style="${unclassified > 0 ? 'border-color: var(--warning);' : ''}">
             <span class="metric-value" style="${unclassified > 0 ? 'color: var(--warning);' : ''}">${unclassified || 0}</span>
