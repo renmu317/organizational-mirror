@@ -546,7 +546,7 @@ function createDefaultResponse(content) {
 const HARD_CAPS = {
   early: 8,      // early 硬上限 8 轮
   org: 18,       // org 硬上限 18 轮
-  strategy: 12   // 【v12】strategy 硬上限 12 轮
+  strategy: 16   // 【v14.3】strategy 硬上限改为 16 轮（删除 12 轮无条件收尾）
 };
 
 // ============================================================
@@ -584,15 +584,17 @@ function getOrCreateState(sessionId) {
       has_success_definition: false, // early: 用户是否给出了成功定义
       has_experiment_action: false,  // early: 用户是否给出了实验行动
 
-      // 【v12.1】策略型追踪（增强）
+      // 【v14.3】策略型追踪（增强）
       has_decision_clarity: false,  // 用户是否已想清楚决策
       has_next_step: false,         // 用户是否给出可执行下一步
-      has_pressure_test: false,     // ★ 新增：是否完成压力测试
+      has_pressure_test: false,     // 是否完成压力测试
+      has_value_evaluation: false,  // 【v14.3】用户是否说出价值/损失/代价
+      has_prediction: false,        // 【v14.3】用户是否给出可量化预测
       decision_chain: [],           // 决策链条
       weakest_link: '',             // 最不确定的一环
       hidden_assumption: '',        // 暴露的隐藏假设
-      target_outcome: '',           // ★ 新增：想要的结果
-      pressure_test_result: ''      // ★ 新增：压力测试结果
+      target_outcome: '',           // 想要的结果
+      pressure_test_result: ''      // 压力测试结果
     });
   }
   return sessionStates.get(sessionId);
@@ -713,7 +715,7 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     }
   }
 
-  // 【v12.1】strategy 路径收尾追踪（增强）
+  // 【v14.3】strategy 路径收尾追踪（增强）
   if (state.path === 'strategy') {
     if (detectDecisionClarity(userReply)) {
       state.has_decision_clarity = true;
@@ -722,14 +724,20 @@ function updateStateFromAIResponse(state, parsed, userReply) {
       state.has_next_step = true;
     }
     if (detectPressureTest(userReply)) {
-      state.has_pressure_test = true;  // ★ 新增：压力测试检测
+      state.has_pressure_test = true;
+    }
+    if (detectValueEvaluation(userReply)) {
+      state.has_value_evaluation = true;  // 【v14.3】价值评估
+    }
+    if (detectPrediction(userReply, parsed)) {
+      state.has_prediction = true;  // 【v14.3】预测
     }
     // 提取 AI 返回的字段
     if (parsed.decision_chain) state.decision_chain = parsed.decision_chain;
     if (parsed.weakest_link) state.weakest_link = parsed.weakest_link;
     if (parsed.hidden_assumption) state.hidden_assumption = parsed.hidden_assumption;
-    if (parsed.target_outcome) state.target_outcome = parsed.target_outcome;  // ★ 新增
-    if (parsed.pressure_test_result) state.pressure_test_result = parsed.pressure_test_result;  // ★ 新增
+    if (parsed.target_outcome) state.target_outcome = parsed.target_outcome;
+    if (parsed.pressure_test_result) state.pressure_test_result = parsed.pressure_test_result;
   }
 
   // 【v11】如果 AI 返回了 next_gap_hook，保存到 state
@@ -789,6 +797,37 @@ function detectPressureTest(userReply) {
     '风险是', '最坏', '万一', '如果假设错', '假设不成立'
   ];
   return pressureKeywords.some(k => r.includes(k));
+}
+
+// ============================================================
+// 【v14.3】价值评估检测
+// ============================================================
+function detectValueEvaluation(userReply) {
+  const r = (userReply || '').toLowerCase();
+  // 用户说出价值/损失/代价/机会（带数值更好）
+  const valueKeywords = ['损失', '代价', '机会', '值', '万', '成本', '收益', '价值', '赚', '亏', '省'];
+  const hasValueWord = valueKeywords.some(k => r.includes(k));
+  // 如果有数字更好，但不强制
+  const hasNumber = /\d/.test(r);
+  return hasValueWord && (hasNumber || r.length > 20);
+}
+
+// ============================================================
+// 【v14.3】预测检测（检查 prediction.object 非空）
+// ============================================================
+function detectPrediction(userReply, parsed) {
+  // 优先检查 AI 返回的 prediction.object
+  if (parsed?.prediction?.object) {
+    return true;
+  }
+  // 备用：用户提到具体数量预测
+  const r = (userReply || '').toLowerCase();
+  const predictionPatterns = [
+    /\d+[个人位%]/,           // 3个人、10%
+    /\d+.*?(?:转化|成交|签)/,  // 5个转化
+    /(?:预测|预计|估计).*?\d/, // 预测有3个
+  ];
+  return predictionPatterns.some(p => p.test(r));
 }
 
 // ============================================================
@@ -916,12 +955,14 @@ app.post('/api/respond', async (req, res) => {
     // 6. 用户主动请求结束
     const userRequestedEnd = !!endRequested;
 
-    // 【v12.1】策略型收尾（更严格）
+    // 【v14.3】策略型收尾（加入价值+预测前置）
     const strategyReady = state.path === 'strategy'
-      && state.has_decision_clarity
-      && state.has_pressure_test    // ★ 新增：必须经过压力测试
+      && state.has_pressure_test        // 必须经过压力测试
+      && state.has_value_evaluation     // 【v14.3】用户说出损失/代价/机会
+      && state.has_prediction           // 【v14.3】用户给出可量化预测
       && state.has_next_step;
 
+    // 【v14.3】16 轮硬兜底（删除 12 轮无条件收尾）
     const strategyCap = state.path === 'strategy'
       && state.total_turns >= HARD_CAPS.strategy;
 
@@ -1129,83 +1170,77 @@ function buildDefaultDiscoveryOutput(state, history = []) {
     return assumptions.length > 0 ? assumptions.slice(0, 3) : [null];
   };
 
-  // 【v12.2】提取可证伪预测（只用用户说过的内容，不编造）
+  // 【v14.3】提取可证伪预测（增强：分析 AI 问题 + 用户回答配对）
   const extractPrediction = () => {
-    // 提取预测对象（什么指标）—— 找包含数字+人/个/约的表述
-    let object = null;
-    for (const msg of userMessages) {
-      const match = msg.match(/(\d+[个人位].*?(?:约|签|转化|1对1|报名))|(?:约|签|转化).*?(\d+[个人位])/);
-      if (match) {
-        object = (match[1] || match[2] || '').slice(0, 50);
-        break;
-      }
-    }
-    if (!object) {
-      // 备用：找"几个""多少"
-      for (const msg of userMessages) {
-        if (msg.includes('约1对1') || msg.includes('转化')) {
-          object = msg.match(/(约.*?1对1|转化.*?\d+|几个.*?约)/)?.[0]?.slice(0, 50) || null;
-          if (object) break;
+    let object = null, if_unchanged = null, if_changed = null, stake = null, verify_window = null;
+
+    // 1. 先从对话配对中提取（更准确）
+    for (let i = 0; i < history.length - 1; i++) {
+      const aiMsg = history[i];
+      const userMsg = history[i + 1];
+      if (aiMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
+
+      const aiText = aiMsg.content || '';
+      const userText = userMsg.content || '';
+
+      // 预测指标（AI 问"预测多少/几个会..."后的回答）
+      if (!object && (aiText.includes('预测') || aiText.includes('几个') || aiText.includes('多少'))) {
+        if (/\d/.test(userText)) {
+          object = userText.slice(0, 80);
         }
       }
-    }
 
-    // 提取"如果不改"的预期 —— 找包含"0-1""现在""只有"的负面预期
-    let if_unchanged = null;
-    for (const msg of userMessages) {
-      if ((msg.includes('0-1') || msg.includes('只有') || msg.includes('现在可能'))
-          && /\d/.test(msg)) {
-        const match = msg.match(/(?:现在|只有|可能).*?(\d+[-~到]?\d*[个人位]?)/);
-        if_unchanged = match ? match[0].slice(0, 60) : msg.slice(0, 60);
-        break;
-      }
-    }
-
-    // 提取"如果改变"的预期 —— 找包含"至少""能有"的正面预期
-    let if_changed = null;
-    for (const msg of userMessages) {
-      if ((msg.includes('至少') || msg.includes('能有') || msg.includes('希望'))
-          && /\d/.test(msg) && !msg.includes('损失')) {
-        const match = msg.match(/(?:至少|能有|希望).*?(\d+[个人位]?)/);
-        if_changed = match ? match[0].slice(0, 60) : null;
-        break;
-      }
-    }
-
-    // 提取价值/代价 —— 找包含"万""损失""机会"的金额表述
-    let stake = null;
-    for (const msg of userMessages) {
-      const match = msg.match(/(?:避免|损失|抓住?|机会|成本|价值).*?(\d+[万元])/);
-      if (match) {
-        stake = match[0].slice(0, 60);
-        break;
-      }
-      // 备用：直接找金额
-      const amountMatch = msg.match(/(\d+[万元].*?(?:损失|机会|成本))|(?:损失|机会|成本).*?(\d+[万元])/);
-      if (amountMatch) {
-        stake = (amountMatch[1] || amountMatch[2] || '').slice(0, 60);
-        break;
-      }
-    }
-
-    // 提取验证时间窗 —— 找具体时间点
-    let verify_window = null;
-    for (const msg of userMessages) {
-      // 优先找"周五后48小时"这种完整表述
-      const fullMatch = msg.match(/(周[一二三四五六日天]后?\d*小时?内?|明天|后天|今天|\d+天内|\d+小时内)/);
-      if (fullMatch) {
-        verify_window = fullMatch[1];
-        break;
-      }
-    }
-    if (!verify_window) {
-      // 备用：单独的时间词
-      for (const msg of userMessages) {
-        const match = msg.match(/(周[一二三四五六日天]|48小时|24小时|7天|一周)/);
-        if (match) {
-          verify_window = match[1];
-          break;
+      // 如果不改（AI 问"现在/不改会怎样"后的回答）
+      if (!if_unchanged && (aiText.includes('现在') || aiText.includes('不改') || aiText.includes('维持'))) {
+        if (/\d/.test(userText) || userText.includes('不') || userText.includes('没')) {
+          if_unchanged = userText.slice(0, 80);
         }
+      }
+
+      // 如果改变（AI 问"改了会怎样/能有多少"后的回答）
+      if (!if_changed && (aiText.includes('改了') || aiText.includes('能有') || aiText.includes('改变后'))) {
+        if (/\d/.test(userText) || userText.length > 15) {
+          if_changed = userText.slice(0, 80);
+        }
+      }
+
+      // 价值代价（AI 问"损失/代价/机会/值多少"后的回答）
+      if (!stake && (aiText.includes('损失') || aiText.includes('代价') || aiText.includes('机会') || aiText.includes('值'))) {
+        if (/\d/.test(userText) || userText.includes('万') || userText.includes('损失') || userText.includes('机会')) {
+          stake = userText.slice(0, 80);
+        }
+      }
+
+      // 验证时间
+      if (!verify_window && (aiText.includes('验证') || aiText.includes('时间') || aiText.includes('多久'))) {
+        const timeMatch = userText.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天|\d+小时|一周)/);
+        if (timeMatch) verify_window = timeMatch[1];
+      }
+    }
+
+    // 2. 备用：从用户消息关键词提取
+    for (const msg of userMessages) {
+      // 预测指标
+      if (!object) {
+        const match = msg.match(/(\d+[个人位%].*?(?:转化|成交|签|付款|约))|(?:转化|成交|签|付款).*?(\d+[个人位%]?)/);
+        if (match) object = (match[1] || match[2] || '').slice(0, 80);
+      }
+      // 如果不改
+      if (!if_unchanged && (msg.includes('现在') || msg.includes('不改')) && /\d/.test(msg)) {
+        if_unchanged = msg.slice(0, 80);
+      }
+      // 如果改变
+      if (!if_changed && (msg.includes('至少') || msg.includes('能有') || msg.includes('希望')) && /\d/.test(msg)) {
+        if_changed = msg.slice(0, 80);
+      }
+      // 价值代价
+      if (!stake && (msg.includes('损失') || msg.includes('机会') || msg.includes('万'))) {
+        stake = msg.slice(0, 80);
+      }
+      // 验证时间
+      if (!verify_window) {
+        const timeMatch = msg.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天内?|\d+小时|一周)/);
+        if (timeMatch) verify_window = timeMatch[1];
       }
     }
 
