@@ -728,6 +728,7 @@ function enforceL3Redline(parsed) {
 // 核心对话接口
 // ============================================================
 app.post('/api/respond', async (req, res) => {
+  console.log('[v12.1] /api/respond called, history length:', req.body?.history?.length || 0);
   try {
     const { history, sessionId, userId, endRequested } = req.body; // 【v8】新增 endRequested, 【v9】新增 userId
     const sid = sessionId || `S${Date.now()}`;
@@ -799,6 +800,7 @@ app.post('/api/respond', async (req, res) => {
 
     // 解析响应
     let parsed = parseAIResponse(aiContent);
+    console.log('[v12.1] parsed path:', parsed.path, 'layer:', parsed.cognition_layer);
 
     // 执行 L3 红线校验
     parsed = enforceL3Redline(parsed);
