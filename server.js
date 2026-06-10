@@ -1,26 +1,24 @@
 /**
- * 组织镜子 v12.1 - 策略型分流 + 压力测试
+ * 组织镜子 v14 - 反映式对话表达
  *
- * v12.1 核心改动：
- * 1. 策略型八步流程（含压力测试）
- *    - 环境 → 想要的结果 → 拆因果链 → 找承重环 → 照出假设 → 压力测试 → 重角色/行为 → 收敛下一步
- * 2. 收尾条件更严格：has_decision_clarity + has_pressure_test + has_next_step
- * 3. 新增字段：target_outcome, pressure_test_result
- * 4. 撬出假设后禁止立即收尾，必须做压力测试
+ * v14 核心改动：
+ * 1. 姿态转换：从"苏格拉底式审问"变成"并排坐着一起看"
+ * 2. 四手法替换连环追问：
+ *    - 反映代替追问（主力）：用陈述句把用户的话说回去
+ *    - 情境重建+叙事邀请：让用户"回到现场"讲故事
+ *    - 并置代替质问矛盾：平静并排摆两句话，让用户自己看见缝隙
+ *    - 信念外化：说"那个想法"而非"你的错误假设"
+ * 3. 红线：建设性不适感必须还在，别滑成情绪按摩
+ * 4. 内核不变：世界模型六层、贝叶斯、撬假设的目标全保留
  *
- * v12 核心改动：
- * 1. 新增 strategy 路径（当下决策问题，不往过去挖）
- *    - 分流判据：怎么办、要不要、该不该、接下来、计划、准备、周五怎么
- *    - 提问骨架：澄清决策 → 拆链条 → 找最不确定环 → 撬隐藏假设 → 收敛下一步
- * 2. 策略型收尾条件：has_decision_clarity + has_pressure_test + has_next_step 或 12轮硬上限
- * 3. 策略型输出卡：decision/target_outcome/decision_chain/weakest_link/hidden_assumption/pressure_test_result/next_step
+ * v12.1 延续：
+ * - 策略型八步流程（含压力测试）
+ * - 收尾条件：has_decision_clarity + has_pressure_test + has_next_step
+ * - 新增字段：target_outcome, pressure_test_result
  *
- * v11 核心改动：
- * 1. 在发现卡末尾新增「下一道缝」机会钩（next_gap_hook）
- *    - 闭环时自动生成，pull 式措辞（"如果你想..."）
- *    - 三条红线：机会钩永远是 pull、闭环优先、去留无条件
- * 2. retrospective 分支措辞克制（不暗示挽回已倒闭的公司）
- * 3. AI 可在 JSON 中返回 next_gap_hook，优先使用
+ * v11 延续：
+ * - next_gap_hook 字段：闭环后的机会钩（pull 式、虚掩门）
+ * - 三条红线：机会钩永远是 pull、闭环优先、去留无条件
  *
  * v8 核心改动：
  * 1. 全路径硬收尾条件（不依赖 AI 的 session_complete）：
@@ -1870,11 +1868,11 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '12.1-strategy-pressure-test',
+    version: '14.0-reflective-dialogue',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
-    architecture: 'v12-strategy-path',
+    architecture: 'v14-reflective-dialogue',
     hard_caps: HARD_CAPS
   });
 });
@@ -1884,7 +1882,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v12.1 - 策略型分流 + 压力测试');
+  console.log('组织镜子 v14 - 反映式对话表达');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
   console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);
@@ -1906,10 +1904,10 @@ app.listen(PORT, () => {
     console.log(`案例库状态: ${active} 条活跃案例 / ${cases.length} 条总计`);
   }
 
-  console.log('\nv12.1 新功能:');
-  console.log('  1. 策略型八步流程（含压力测试）');
-  console.log('  2. 收尾条件更严格：必须经过压力测试');
-  console.log('  3. 产出卡增加：想要的结果 + 压力测试结果');
+  console.log('\nv14 核心变化:');
+  console.log('  1. 姿态转换：从"苏格拉底式审问"变成"并排坐着一起看"');
+  console.log('  2. 四手法：反映 + 并置 + 叙事邀请 + 外化（替换连环追问）');
+  console.log('  3. 红线：建设性不适感必须还在，别滑成情绪按摩');
   console.log(`  - 硬上限: early=${HARD_CAPS.early}轮, strategy=${HARD_CAPS.strategy}轮, org=${HARD_CAPS.org}轮`);
 
   console.log('\n' + '='.repeat(60));
