@@ -350,10 +350,13 @@ async function callDeepSeek(systemPrompt, messages, hasImage = false, retryWitho
   // 【v9】根据是否有图片选择模型
   const model = hasImage ? DEEPSEEK_VISION_MODEL : 'deepseek-chat';
 
-  // 【v14 fix】重试时，在 system prompt 末尾强调 JSON 格式
+  // 【v14 fix】重试时，在 system prompt 末尾强调 JSON 格式（给完整示例）
   let finalSystemPrompt = systemPrompt;
   if (retryWithoutJsonFormat) {
-    finalSystemPrompt += '\n\n【重要】请务必只输出 JSON 对象，格式为 {"reply":"你的回复",...}，不要输出任何其他文字。';
+    finalSystemPrompt += `
+
+【重要 - 必须严格遵守】请只输出一个 JSON 对象，不要输出任何其他文字。格式示例：
+{"reply":"你给用户的回复内容","path":"strategy","branch":null,"stage":1,"cognition_layer":"result","causal_chain":[],"curiosity_triggered":false,"probe_triggered":false,"redefined_problem":"","world_rule":"","difficulty":"L1","question_kind":"definition","options":[],"session_hint":null,"internal_note":"","session_complete":false,"next_gap_hook":"","target_outcome":"","decision_chain":[],"weakest_link":"","hidden_assumption":"","pressure_test_result":""}`;
   }
 
   // 【v12.1 fix】构建请求体
@@ -1158,21 +1161,49 @@ function buildDefaultDiscoveryOutput(state, history = []) {
 
   // 【v12.1】strategy 路径（增强）
   if (state.path === 'strategy') {
+    // 【v14 兜底】从对话历史提取信息（当 state 字段为空时）
+    const extractFromHistory = () => {
+      let target = null, chain = [], weakest = null, assumption = null, pressure = null;
+
+      for (const msg of userMessages) {
+        // 提取目标
+        if (!target && (msg.includes('想要') || msg.includes('目标') || msg.includes('希望') || msg.includes('转化'))) {
+          target = msg.slice(0, 100);
+        }
+        // 提取假设
+        if (!assumption && (msg.includes('假设') || msg.includes('以为') || msg.includes('认为') || msg.includes('默认'))) {
+          assumption = msg.slice(0, 100);
+        }
+        // 提取压力测试结果
+        if (!pressure && (msg.includes('如果错') || msg.includes('如果不') || msg.includes('会塌') || msg.includes('风险'))) {
+          pressure = msg.slice(0, 100);
+        }
+        // 提取承重环
+        if (!weakest && (msg.includes('不确定') || msg.includes('没把握') || msg.includes('关键'))) {
+          weakest = msg.slice(0, 100);
+        }
+      }
+      return { target, chain, weakest, assumption, pressure };
+    };
+
+    const fallback = extractFromHistory();
+
     // 生成机会钩
     let strategyHook = null;
+    const hiddenAssumption = state.hidden_assumption || fallback.assumption;
     if (state.ai_generated_hook) {
       strategyHook = state.ai_generated_hook;
-    } else if (state.hidden_assumption) {
-      strategyHook = `你这个决策想清楚了——而你刚才那条"${state.hidden_assumption.slice(0, 20)}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
+    } else if (hiddenAssumption) {
+      strategyHook = `你这个决策想清楚了——而你刚才那条"${hiddenAssumption.slice(0, 20)}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
     }
 
     return {
       decision: state.originalProblem || userMessages[0] || '未记录',
-      target_outcome: state.target_outcome || null,
-      decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : null,
-      weakest_link: state.weakest_link || null,
-      hidden_assumption: state.hidden_assumption || null,
-      pressure_test_result: state.pressure_test_result || null,
+      target_outcome: state.target_outcome || fallback.target || null,
+      decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : (fallback.chain.length > 0 ? fallback.chain : null),
+      weakest_link: state.weakest_link || fallback.weakest || null,
+      hidden_assumption: state.hidden_assumption || fallback.assumption || null,
+      pressure_test_result: state.pressure_test_result || fallback.pressure || null,
       next_step: userMessages.find(m =>
         m.includes('先') || m.includes('第一步') || m.includes('接下来')
       )?.slice(0, 100) || null,
