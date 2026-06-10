@@ -2057,7 +2057,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '14.2-robust-parser',
+    version: '14.3-strategy-10step',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
@@ -2071,7 +2071,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v14.2 - 健壮解析器');
+  console.log('组织镜子 v14.3 - 策略型十步流程');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
   console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);
