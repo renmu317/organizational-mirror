@@ -460,12 +460,19 @@ function detectPathFromMessage(userMessage) {
     return 'early';
   }
 
-  // org 信号词（面向过去/已有结果）【v10】双语
+  // org 信号词（面向过去/已有结果）【v10】双语 【v16.2 增强】
   const orgKeywords = [
-    // 中文
-    '当时', '之前', '已经', '倒闭', '为什么会', '后来', '客户流失', '利润下滑', '失败', '出了问题',
+    // 中文 - 过去时态
+    '当时', '之前', '已经', '后来',
+    // 中文 - 问题/结果
+    '倒闭', '为什么会', '客户流失', '利润下滑', '失败', '出了问题',
+    // 【v16.2 新增】产品/业务问题
+    '转化率', '转化低', '转化差', '留存', '流失', '下降', '上线了', '上线一',
+    '效果不好', '效果差', '不理想', '没达到', '低于预期',
     // 英文
-    'back then', 'before', 'already', 'shut down', 'went wrong', 'after that', 'customer churn', 'revenue drop', 'failed', 'problem with'
+    'back then', 'before', 'already', 'shut down', 'went wrong', 'after that', 'customer churn', 'revenue drop', 'failed', 'problem with',
+    // 【v16.2 新增】英文产品问题
+    'conversion rate', 'retention', 'launched', 'not working', 'underperforming'
   ];
   if (orgKeywords.some(k => msg.includes(k))) {
     return 'org';
@@ -679,6 +686,11 @@ function recoverStateFromHistory(state, history) {
     // org 路径
     if (state.path === 'org') {
       if (detectRetrospective(content)) state.branch = 'retrospective';
+      // 【v16.2】org 路径也需要检测 world_rule
+      const detectedRule = detectWorldRule(content);
+      if (detectedRule && !state.world_rule) {
+        state.world_rule = detectedRule;
+      }
     }
   }
 
@@ -838,6 +850,15 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     if (parsed.pressure_test_result) state.pressure_test_result = parsed.pressure_test_result;
   }
 
+  // 【v16.2】org 路径也需要从用户消息检测 world_rule
+  if (state.path === 'org') {
+    const detectedRule = detectWorldRule(userReply);
+    if (detectedRule && !state.world_rule) {
+      state.world_rule = detectedRule;
+      console.log(`[v16.2] org 路径检测到世界规则: "${detectedRule.slice(0, 50)}..."`);
+    }
+  }
+
   // 【v11】如果 AI 返回了 next_gap_hook，保存到 state
   if (parsed.next_gap_hook) {
     state.ai_generated_hook = parsed.next_gap_hook;
@@ -937,25 +958,42 @@ function detectWorldRule(userReply) {
 
   // 世界规则标志词（用户表达底层信念的典型模式）
   const rulePatterns = [
+    // 直接陈述信念
     '我一直觉得', '我一直认为', '我一直相信', '我总是觉得', '我总是认为',
     '我相信', '我的原则是', '我的规则是', '我从来都', '我向来',
+    '我确实一直', '我确实在用', '我的确相信',
+    // 条件式信念
     '只要', '只有', '必须', '一定要', '不然就', '否则就',
-    '我确实一直', '我确实在用', '我的确相信'
+    // 【v16.2 新增】等式型规则（"A=B" 或 "A就是B"）
+    '就是', '等于', '意味着', '代表', '说明',
+    // 【v16.2 新增】觉醒/认领时刻
+    '我以前没想到', '我之前没想过', '原来我一直', '我没意识到', '我居然',
+    '没想到我', '我竟然', '我发现我其实', '我终于看清',
+    // 【v16.2 新增】外化表达
+    '那个想法', '这个信念', '这条规则', '我心里有一个'
   ];
 
   // 英文模式
   const rulePatternEn = [
     'i always', 'i believe', 'i\'ve always', 'my rule is', 'my principle',
-    'i must', 'i have to', 'otherwise', 'or else'
+    'i must', 'i have to', 'otherwise', 'or else',
+    // 【v16.2 新增】
+    'i never realized', 'i didn\'t realize', 'turns out i', 'i\'ve been',
+    'equals', 'means that', 'that belief', 'this rule'
   ];
 
+  // 【v16.2 新增】检测等式型规则："A=B" 或 "A 等于 B" 或 "A 就是 B"
+  const hasEquationPattern = r.includes('=') && r.length >= 10 && !r.includes('http');
+
   const hasRulePattern = rulePatterns.some(p => r.includes(p)) ||
-                         rulePatternEn.some(p => rLower.includes(p));
+                         rulePatternEn.some(p => rLower.includes(p)) ||
+                         hasEquationPattern;
 
   // 必须是陈述句，长度够（表达一个完整的信念）
   if (hasRulePattern && r.length >= 15) {
-    // 提取规则内容（取前100字符作为规则摘要）
-    return r.slice(0, 100);
+    // 提取规则内容（取前150字符作为规则摘要）
+    console.log(`[v16.2] detectWorldRule 触发: "${r.slice(0, 50)}..."`);
+    return r.slice(0, 150);
   }
 
   return null;
@@ -1205,6 +1243,19 @@ app.post('/api/respond', async (req, res) => {
       }
 
       response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history, closeReason, conversationLang);
+
+      // 【v16.2 调试日志】收卡时打印关键状态
+      console.log(`[v16.2] 收卡状态:`, {
+        path: state.path,
+        branch: state.branch,
+        cognition_layer: state.cognition_layer,
+        world_rule: state.world_rule ? `"${state.world_rule.slice(0, 50)}..."` : null,
+        has_world_rule: !!(state.world_rule && state.world_rule.trim()),
+        closeReason,
+        discovery_output_keys: Object.keys(response.discovery_output),
+        discovery_output_world_rule: response.discovery_output.world_rule ? `"${response.discovery_output.world_rule.slice(0, 50)}..."` : null,
+        discovery_output_causal_chain: response.discovery_output.causal_chain || response.discovery_output.world_model?.causal_chain || null
+      });
       console.log(`[v12.1] 收尾: path=${state.path}, reason=${closeReason}, discovery_output 字段:`, Object.keys(response.discovery_output));
       response.close_reason = closeReason; // 【v8】记录收尾原因
 
@@ -1648,12 +1699,28 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
              ml.includes('came from') || ml.includes('because') || ml.includes('always');
     })?.slice(0, 100) || null;
 
+    // 【v16.2】从对话中兜底提取 world_rule
+    let retroWorldRule = state.world_rule;
+    if (!retroWorldRule) {
+      for (const msg of userMessages) {
+        const ml = msg.toLowerCase();
+        if ((msg.includes('=') || ml.includes('就是') || ml.includes('意味着')) && msg.length >= 15) {
+          retroWorldRule = msg.slice(0, 150);
+          break;
+        }
+        if (ml.includes('我以前没想到') || ml.includes('原来我一直') || ml.includes('我终于看清')) {
+          retroWorldRule = msg.slice(0, 150);
+          break;
+        }
+      }
+    }
+
     return {
       current_problem: originalProblem,
       causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
       wrong_assumptions: findWrongAssumptions(),
       assumption_source: assumptionSource,
-      world_rule: state.world_rule || null,
+      world_rule: retroWorldRule,  // 【v16.2】从 state 或对话兜底提取
       next_early_signal: findEarlyWarning(),
       is_retrospective: true,
       no_experiment: true,
@@ -1663,18 +1730,76 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
 
   // org · actionable（有实验卡 + 可证伪预测）【v10】双语
   const exp = findExperimentContent();
+
+  // 【v16.2】从对话中兜底提取 world_rule
+  const extractWorldRuleFromHistory = () => {
+    if (state.world_rule) return state.world_rule;
+    // 从用户消息中找等式型规则或觉醒时刻
+    for (const msg of userMessages) {
+      const ml = msg.toLowerCase();
+      // 等式型："A=B" 或 "A就是B" 或 "A意味着B"
+      if ((msg.includes('=') || ml.includes('就是') || ml.includes('意味着') || ml.includes('等于')) && msg.length >= 15) {
+        return msg.slice(0, 150);
+      }
+      // 觉醒时刻
+      if (ml.includes('我以前没想到') || ml.includes('我之前没想过') || ml.includes('原来我一直') ||
+          ml.includes('我没意识到') || ml.includes('我终于看清') || ml.includes('我发现我其实')) {
+        return msg.slice(0, 150);
+      }
+      // 信念陈述
+      if (ml.includes('我一直') || ml.includes('我相信') || ml.includes('我的原则')) {
+        return msg.slice(0, 150);
+      }
+    }
+    return null;
+  };
+
+  // 【v16.2】从对话中提取好奇问题
+  const extractCuriosityQuestions = () => {
+    const questions = [];
+    for (const msg of userMessages) {
+      if ((msg.includes('？') || msg.includes('?')) && msg.length > 10) {
+        questions.push(msg.slice(0, 80));
+        if (questions.length >= 3) break;
+      }
+    }
+    return questions.length > 0 ? questions : null;
+  };
+
+  // 【v16.2】从对话中提取重定义的问题
+  const extractRedefinedProblem = () => {
+    // 找最后一条较长的用户消息（可能是总结性的）
+    for (let i = userMessages.length - 1; i >= 0; i--) {
+      const msg = userMessages[i];
+      const ml = msg.toLowerCase();
+      if (msg.length > 30 && (
+        ml.includes('原来') || ml.includes('其实') || ml.includes('真正的问题') ||
+        ml.includes('核心是') || ml.includes('关键是') ||
+        ml.includes('actually') || ml.includes('the real') || ml.includes('the core')
+      )) {
+        return msg.slice(0, 150);
+      }
+    }
+    return null;
+  };
+
   const assumptionSource = userMessages.find(m => {
     const ml = m.toLowerCase();
     return ml.includes('来自') || ml.includes('因为过去') || ml.includes('一直以来') ||
            ml.includes('came from') || ml.includes('because') || ml.includes('always');
   })?.slice(0, 100) || null;
 
+  // 【v16.2】兜底提取 world_rule
+  const worldRuleValue = extractWorldRuleFromHistory();
+
   return {
     current_problem: originalProblem,
     causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
     wrong_assumptions: findWrongAssumptions(),
     assumption_source: assumptionSource,
-    world_rule: state.world_rule || null,
+    world_rule: worldRuleValue,  // 【v16.2】从 state 或对话兜底提取
+    curiosity_questions: extractCuriosityQuestions(),  // 【v16.2】好奇问题
+    redefined_problem: state.redefinedProblem || extractRedefinedProblem(),  // 【v16.2】重定义
     seven_day_experiment: {
       hypothesis: exp.hypothesis || (isEn ? 'Hypothesis to validate' : '待验证的假设'),
       experiment: exp.experiment || (isEn ? 'Minimum experiment this week' : '本周可执行的最小实验'),
@@ -2343,7 +2468,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '16.1-strategy-stats',
+    version: '16.2-card-fix',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),

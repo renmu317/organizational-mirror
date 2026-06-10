@@ -1166,16 +1166,27 @@ class OrganizationalMirror {
   buildOrgPathCard(output) {
     const nc = t('not_covered');
 
+    // 【v16.2 兼容修复】同时支持平级和嵌套格式
+    // 因果链：优先取 causal_chain（新格式），回退到 world_model.causal_chain（旧格式）
+    const causalChain = output.causal_chain || output.world_model?.causal_chain || [];
+    // 隐藏假设：优先取 wrong_assumptions（新格式），回退到 hidden_assumptions / world_model.hidden_assumptions
+    const hiddenAssumptions = output.wrong_assumptions || output.hidden_assumptions || output.world_model?.hidden_assumptions || [];
+
     // 因果链渲染
     let causalChainHtml = nc;
-    if (output.world_model?.causal_chain && output.world_model.causal_chain.length > 0) {
-      causalChainHtml = output.world_model.causal_chain
+    const validChain = causalChain.filter(item => item && item !== null);
+    if (validChain.length > 0) {
+      causalChainHtml = validChain
         .map((item, i) => {
-          const isLast = i === output.world_model.causal_chain.length - 1;
+          const isLast = i === validChain.length - 1;
           return `<span class="mini-chain-node">${item}</span>${isLast ? '' : '<span class="mini-chain-arrow">→</span>'}`;
         })
         .join('');
     }
+
+    // 隐藏假设渲染
+    const validAssumptions = hiddenAssumptions.filter(item => item && item !== null);
+    const assumptionsHtml = validAssumptions.length > 0 ? validAssumptions.join('；') : nc;
 
     let html = `
       <div class="card-field">
@@ -1190,8 +1201,21 @@ class OrganizationalMirror {
       </div>
       <div class="card-field">
         <label>${t('field_hidden_assumptions')}</label>
-        <p>${output.world_model?.hidden_assumptions?.join('；') || nc}</p>
+        <p>${assumptionsHtml}</p>
       </div>
+    `;
+
+    // 【v16.2】世界规则（如果有，高亮显示）
+    if (output.world_rule && output.world_rule.trim()) {
+      html += `
+        <div class="card-field highlight world-rule">
+          <label>${t('field_world_rule') || '底层规则'}</label>
+          <p>${output.world_rule}</p>
+        </div>
+      `;
+    }
+
+    html += `
       <div class="card-field highlight">
         <label>${t('field_missing_variables')}</label>
         <p>${output.missing_variables?.join('、') || nc}</p>
@@ -1204,32 +1228,38 @@ class OrganizationalMirror {
         <label>${t('field_redefined_problem')}</label>
         <p>${output.redefined_problem || nc}</p>
       </div>
-      <div class="card-section experiment-section">
-        <h3>${t('field_experiment_title')}</h3>
-        <div class="card-field">
-          <label>${t('field_hypothesis')}</label>
-          <p>${output.seven_day_experiment?.hypothesis || nc}</p>
-        </div>
-        <div class="card-field">
-          <label>${t('field_experiment')}</label>
-          <p>${output.seven_day_experiment?.experiment || nc}</p>
-        </div>
-        <div class="card-field">
-          <label>${t('field_success_criteria')}</label>
-          <p>${output.seven_day_experiment?.success_criteria || nc}</p>
-        </div>
-        <div class="card-row">
-          <div class="card-field half">
-            <label>${t('field_time')}</label>
-            <p>${output.seven_day_experiment?.time_horizon || t('default_time')}</p>
-          </div>
-          <div class="card-field half">
-            <label>${t('field_owner')}</label>
-            <p>${output.seven_day_experiment?.owner || t('default_owner')}</p>
-          </div>
-        </div>
-      </div>
     `;
+
+    // 实验卡（仅非 retrospective）
+    if (!output.no_experiment) {
+      html += `
+        <div class="card-section experiment-section">
+          <h3>${t('field_experiment_title')}</h3>
+          <div class="card-field">
+            <label>${t('field_hypothesis')}</label>
+            <p>${output.seven_day_experiment?.hypothesis || nc}</p>
+          </div>
+          <div class="card-field">
+            <label>${t('field_experiment')}</label>
+            <p>${output.seven_day_experiment?.experiment || nc}</p>
+          </div>
+          <div class="card-field">
+            <label>${t('field_success_criteria')}</label>
+            <p>${output.seven_day_experiment?.success_criteria || nc}</p>
+          </div>
+          <div class="card-row">
+            <div class="card-field half">
+              <label>${t('field_time')}</label>
+              <p>${output.seven_day_experiment?.time_horizon || t('default_time')}</p>
+            </div>
+            <div class="card-field half">
+              <label>${t('field_owner')}</label>
+              <p>${output.seven_day_experiment?.owner || t('default_owner')}</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     // 【v12.2】可证伪预测（仅 actionable，no_experiment=true 说明是 retrospective）
     if (output.prediction && !output.no_experiment) {
