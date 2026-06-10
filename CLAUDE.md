@@ -4,6 +4,76 @@
 
 一个让企业领导者**自己发现**组织真实瓶颈的 AI 咨询对话工具。
 
+## v11.0 问题/机会双脸循环 (2026-06-09 更新)
+
+### v11 核心理念
+
+> 闭环于问题，重启于机会。closure 不是终点，是检查点。
+
+### v11 新功能
+
+| 功能 | 说明 |
+|------|------|
+| **下一道缝机会钩** | 发现卡末尾新增 `next_gap_hook` 字段 |
+| **pull 式措辞** | "如果你想..."、"想看的话..." |
+| **三条红线** | 机会钩永远 pull、闭环优先、去留无条件 |
+
+### 机会钩生成条件
+
+| 路径 | 触发条件 | 措辞示例 |
+|------|----------|----------|
+| **org·actionable** | 有 world_rule | "既然你已经看清'...'——你手上还在用这套老逻辑运转的，还有哪一块？" |
+| **org·retrospective** | 有 world_rule | "下次创业如果遇到类似处境，你最先想看清的会是什么？"（措辞克制） |
+| **early** | 有实验行动 | "等你验证完这一轮，如果发现预测和现实不符，那个'不符'里可能藏着下一道值得挖的缝。" |
+
+### 三条硬约束
+
+```
+1. 机会钩永远是 pull、门虚掩（"如果你想..."）
+2. 闭环优先于钩子——用户必须能干净离开
+3. 去留无条件——位置决定语气，永远不决定去留
+```
+
+### v11 修改文件清单
+
+| 文件 | 改动内容 |
+|------|----------|
+| `server.js` | `buildDefaultDiscoveryOutput()` 新增 `next_gap_hook` 生成逻辑 |
+| `prompts/consultant.js` | JSON schema 新增 `next_gap_hook` 字段 + 指令段落 |
+| `public/app.js` | `buildEarlyPathCard()` 和 `buildOrgPathCard()` 新增钩子渲染 |
+| `public/styles.css` | 新增 `.card-field.next-gap-hook` 样式 |
+
+### discovery_output 新增字段
+
+```javascript
+{
+  // ...existing fields...
+  next_gap_hook: string | null  // 【v11】出口机会钩（仅闭环时填充）
+}
+```
+
+### AI JSON 输出格式扩展
+
+```json
+{
+  // ...existing fields...
+  "next_gap_hook": ""  // 【v11】闭环后的机会钩（pull式、虚掩门）；未闭环填空串
+}
+```
+
+### 验收清单
+
+| # | 检查点 | 预期 |
+|---|--------|------|
+| 1 | org·actionable 闭环 | 卡片末尾出现「下一道缝」 |
+| 2 | org·retrospective 闭环 | 卡片末尾出现（措辞克制） |
+| 3 | early 路径闭环 | 卡片末尾出现 |
+| 4 | 中途结束（无 world_rule） | **不显示**「下一道缝」 |
+| 5 | 用户点结束按钮 | 仍能干净离开 |
+| 6 | 钩子措辞 | pull 式，非威胁式 |
+
+---
+
 ## v9.0 侧边栏 + 后台 + 图片上传 (2026-06-09 更新)
 
 ### v9 新功能
@@ -21,12 +91,6 @@
 | 主页 | http://localhost:3000 |
 | Admin 后台 | http://localhost:3000/admin.html |
 
-### Admin 密码
-
-```
-X1syFCXQhg0WpaWQ
-```
-
 ### v9 新增 API 端点
 
 | 端点 | 方法 | 说明 |
@@ -42,7 +106,7 @@ X1syFCXQhg0WpaWQ
 
 ```bash
 # .env 新增
-ADMIN_PASSWORD=X1syFCXQhg0WpaWQ
+ADMIN_PASSWORD=<your-password>
 DEEPSEEK_VISION_MODEL=deepseek-chat
 ```
 
@@ -248,7 +312,7 @@ curl -X POST http://localhost:3000/api/respond -H "Content-Type: application/jso
 2. **客户选择结束阶段**：Stage 3 撞 2-3 个问题后问「哪个最让你意外？」
 3. **全场总轮数**：early ≤5 轮，org ≤15 轮，到顶强制收尾
 
-## v3 路线图
+## 路线图
 
 - [x] 开场隐性分流（early/org）
 - [x] 早期路径（E1-E4）
@@ -259,6 +323,10 @@ curl -X POST http://localhost:3000/api/respond -H "Content-Type: application/jso
 - [x] 单页面 UI（删除进度条）
 - [x] 双路径输出卡
 - [x] 57 个单元测试
+- [x] 全路径硬收尾（v8）
+- [x] 侧边栏 + 用户管理（v9）
+- [x] 图片上传分析（v9）
+- [x] 问题/机会双脸循环（v11）
 - [ ] 向量检索（embeddings）替代关键词匹配
 - [ ] 自动采纳 session 为案例
 - [ ] 统计裁判（跨案例规律发现）
@@ -268,4 +336,26 @@ curl -X POST http://localhost:3000/api/respond -H "Content-Type: application/jso
 *创建日期: 2024-01*
 *v3.0 更新: 2026-06-08*
 *v8.0 更新: 2026-06-08*
-*理论底座: 开场分流 × 双路径 × 撞击式提问 × 全路径硬收尾*
+*v11.0 更新: 2026-06-09*
+*v14.2 更新: 2026-06-10*
+*理论底座: 开场分流 × 双路径 × 撞击式提问 × 全路径硬收尾 × 问题/机会双脸循环*
+
+---
+
+## v14.2 健壮解析器 (2026-06-10)
+
+### 问题背景
+DeepSeek API 在 `response_format: { type: 'json_object' }` + 多轮对话下频繁返回空白/纯空格响应。
+
+### 解决方案
+1. **移除 response_format** - 不再强制 JSON 输出模式
+2. **JS 侧路径检测** - 当 AI 返回纯文本时，从第一条用户消息检测 path
+3. **健壮解析器** - 支持 JSON / 混合文本 / 纯文本三种输出格式
+4. **状态持久化** - path 一旦检测成功就保存到 state，后续轮次无需重复检测
+
+### 路径检测关键词
+| 路径 | 关键词 |
+|------|--------|
+| strategy | 怎么办、要不要、该不该、计划、准备、周五、demo |
+| early | 没有客户、还没上线、想法阶段、没验证 |
+| org | 当时、之前、已经、倒闭、客户流失、利润下滑 |

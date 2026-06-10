@@ -342,7 +342,7 @@ function searchCases(history, stage) {
 // ============================================================
 // DeepSeek API 调用（v9：支持图片消息）
 // ============================================================
-async function callDeepSeek(systemPrompt, messages, hasImage = false, retryWithoutJsonFormat = false) {
+async function callDeepSeek(systemPrompt, messages, hasImage = false, retryCount = 0) {
   if (!DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY not configured');
   }
@@ -350,30 +350,27 @@ async function callDeepSeek(systemPrompt, messages, hasImage = false, retryWitho
   // 【v9】根据是否有图片选择模型
   const model = hasImage ? DEEPSEEK_VISION_MODEL : 'deepseek-chat';
 
-  // 【v14 fix】重试时，在 system prompt 末尾强调 JSON 格式（给完整示例）
+  // 【v14.2 fix】不使用 response_format，改用提示词强制 JSON + 健壮解析
   let finalSystemPrompt = systemPrompt;
-  if (retryWithoutJsonFormat) {
-    finalSystemPrompt += `
+  const temperature = retryCount > 0 ? 0.5 : 0.7;
 
-【重要 - 必须严格遵守】请只输出一个 JSON 对象，不要输出任何其他文字。格式示例：
-{"reply":"你给用户的回复内容","path":"strategy","branch":null,"stage":1,"cognition_layer":"result","causal_chain":[],"curiosity_triggered":false,"probe_triggered":false,"redefined_problem":"","world_rule":"","difficulty":"L1","question_kind":"definition","options":[],"session_hint":null,"internal_note":"","session_complete":false,"next_gap_hook":"","target_outcome":"","decision_chain":[],"weakest_link":"","hidden_assumption":"","pressure_test_result":""}`;
-  }
+  // 在提示词末尾添加 JSON 强调（所有请求都加）
+  finalSystemPrompt += `
 
-  // 【v12.1 fix】构建请求体
+【输出要求】你必须只输出一个 JSON 对象，不要有任何其他文字。JSON 必须以 { 开头，以 } 结尾。`;
+
   const requestBody = {
     model: model,
     messages: [
       { role: 'system', content: finalSystemPrompt },
       ...messages
     ],
-    temperature: 0.7,
-    max_tokens: 1500
+    temperature: temperature,
+    max_tokens: 2000
   };
 
-  // 【v14 fix】非 vision 模式下使用 JSON 输出，但如果是重试则不加（可能和复杂提示词冲突）
-  if (!hasImage && !retryWithoutJsonFormat) {
-    requestBody.response_format = { type: 'json_object' };
-  }
+  // 【v14.2 fix】不使用 response_format（DeepSeek 在多轮对话下不稳定）
+  // 改为依赖提示词 + 健壮解析器
 
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
@@ -392,16 +389,16 @@ async function callDeepSeek(systemPrompt, messages, hasImage = false, retryWitho
   const data = await response.json();
   const content = data.choices[0].message.content;
 
-  // 【v14 debug】记录 API 响应
-  console.log(`[API response] length: ${content?.length || 0}, preview: ${(content || '').slice(0, 100)}`);
+  // 【v14.2 debug】记录 API 响应
+  console.log(`[API response] retry=${retryCount}, temp=${temperature}, length: ${content?.length || 0}, preview: ${(content || '').slice(0, 100)}`);
 
-  // 【v14 fix】如果内容为空或只有空格，且还没重试过，则不带 response_format 重试一次
-  if (!content || content.trim().length === 0) {
-    if (!retryWithoutJsonFormat) {
-      console.log('[API response] EMPTY, retrying without response_format...');
-      return callDeepSeek(systemPrompt, messages, hasImage, true);
+  // 【v14.2 fix】空响应或纯文本响应时重试
+  if (!content || content.trim().length === 0 || (!content.includes('{') && retryCount < 1)) {
+    if (retryCount < 2) {
+      console.log(`[API response] EMPTY or no JSON, retry ${retryCount + 1}/2...`);
+      return callDeepSeek(systemPrompt, messages, hasImage, retryCount + 1);
     }
-    console.error('[API response] EMPTY even after retry! Full response:', JSON.stringify(data).slice(0, 500));
+    console.error('[API response] Failed after 2 retries:', (content || '').slice(0, 200));
   }
 
   return content;
@@ -435,26 +432,91 @@ function convertMessagesForAPI(messages) {
 // ============================================================
 // 解析 AI 响应
 // ============================================================
-function parseAIResponse(content) {
-  try {
-    return JSON.parse(content);
-  } catch (e) {
-    // 【v12.1 debug】第一次解析失败，尝试提取 JSON
-    console.error('[parse fail] first try, error:', e.message);
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e2) {
-        // 【v12.1 debug】提取后仍失败，记录原始内容
-        console.error('[parse fail] raw:', content.slice(0, 500));
-        return createDefaultResponse(content);
+// 【v14.2】JS 侧路径检测（兜底）
+function detectPathFromMessage(userMessage) {
+  const msg = (userMessage || '').toLowerCase();
+
+  // strategy 信号词（面向未来决策）
+  const strategyKeywords = ['怎么办', '要不要', '该不该', '接下来', '计划', '准备', '周五', '明天', '这周', '下周', 'demo', '方案', '选择', '决定'];
+  if (strategyKeywords.some(k => msg.includes(k))) {
+    return 'strategy';
+  }
+
+  // early 信号词（没有客户/没验证）
+  const earlyKeywords = ['没有客户', '还没上线', '想法阶段', '没验证', '没收入', '刚开始', '想做'];
+  if (earlyKeywords.some(k => msg.includes(k))) {
+    return 'early';
+  }
+
+  // org 信号词（面向过去/已有结果）
+  const orgKeywords = ['当时', '之前', '已经', '倒闭', '为什么会', '后来', '客户流失', '利润下滑', '失败', '出了问题'];
+  if (orgKeywords.some(k => msg.includes(k))) {
+    return 'org';
+  }
+
+  return null;
+}
+
+function parseAIResponse(content, state = null, userMessage = null) {
+  // 【v14.2】健壮解析器：尝试多种方式提取 JSON
+  const tryParse = (str) => {
+    try {
+      return JSON.parse(str);
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. 直接解析
+  let parsed = tryParse(content);
+  if (parsed && parsed.reply) return parsed;
+
+  // 2. 提取 {...} 块
+  const jsonMatch = (content || '').match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    parsed = tryParse(jsonMatch[0]);
+    if (parsed && parsed.reply) return parsed;
+  }
+
+  // 3. 尝试修复常见 JSON 错误（末尾多余逗号等）
+  if (jsonMatch) {
+    const cleaned = jsonMatch[0]
+      .replace(/,\s*}/g, '}')  // 移除末尾多余逗号
+      .replace(/,\s*]/g, ']'); // 移除数组末尾多余逗号
+    parsed = tryParse(cleaned);
+    if (parsed && parsed.reply) return parsed;
+  }
+
+  // 4. 如果是纯文本回复，构造最小 JSON
+  const textContent = (content || '').trim();
+  if (textContent && !textContent.startsWith('{')) {
+    // 尝试从 state 获取 path，如果 state.path 仍是 unknown，则用 JS 检测
+    let detectedPath = state?.path || 'unknown';
+    if (detectedPath === 'unknown' && userMessage) {
+      const jsPath = detectPathFromMessage(userMessage);
+      if (jsPath) {
+        detectedPath = jsPath;
+        console.log(`[parse] JS path detection: ${jsPath}`);
       }
     }
-    // 【v12.1 debug】没找到 JSON 结构
-    console.error('[parse fail] no JSON found, raw:', content.slice(0, 500));
-    return createDefaultResponse(content);
+
+    console.log('[parse] Treating as plain text reply');
+    return {
+      reply: textContent,
+      path: detectedPath,
+      branch: state?.branch || null,
+      stage: state?.stage || 1,
+      cognition_layer: state?.cognition_layer || 'result',
+      world_rule: state?.world_rule || '',
+      difficulty: state?.difficulty || 'L1',
+      question_kind: 'definition',
+      options: [],
+      session_complete: false
+    };
   }
+
+  console.error('[parse fail] Could not parse, raw:', (content || '').slice(0, 300));
+  return createDefaultResponse(content);
 }
 
 function createDefaultResponse(content) {
@@ -747,7 +809,7 @@ function enforceL3Redline(parsed) {
 // 核心对话接口
 // ============================================================
 app.post('/api/respond', async (req, res) => {
-  console.log('[v12.1] /api/respond called, history length:', req.body?.history?.length || 0);
+  console.log('[v14.2] /api/respond called, history length:', req.body?.history?.length || 0);
   try {
     const { history, sessionId, userId, endRequested } = req.body; // 【v8】新增 endRequested, 【v9】新增 userId
     const sid = sessionId || `S${Date.now()}`;
@@ -817,9 +879,10 @@ app.post('/api/respond', async (req, res) => {
     // 调用 DeepSeek
     const aiContent = await callDeepSeek(systemPrompt, convertedHistory, hasImage);
 
-    // 解析响应
-    let parsed = parseAIResponse(aiContent);
-    console.log('[v12.1] parsed path:', parsed.path, 'layer:', parsed.cognition_layer);
+    // 解析响应（传入 state + 第一条用户消息以便纯文本时检测路径）
+    const firstUserMessage = history.find(m => m.role === 'user')?.content || '';
+    let parsed = parseAIResponse(aiContent, state, firstUserMessage);
+    console.log('[v14.2] parsed path:', parsed.path, 'layer:', parsed.cognition_layer);
 
     // 执行 L3 红线校验
     parsed = enforceL3Redline(parsed);
@@ -828,7 +891,7 @@ app.post('/api/respond', async (req, res) => {
     updateStateFromAIResponse(state, parsed, lastUserMessage);
 
     // 调试日志
-    console.log(`[v8] Turn ${state.total_turns}: path=${state.path}, branch=${state.branch}, layer=${state.cognition_layer}, world_rule=${state.world_rule ? 'yes' : 'no'}, rule_turn_count=${state.rule_turn_count || 0}`);
+    console.log(`[v14.2] Turn ${state.total_turns}: path=${state.path}, branch=${state.branch}, layer=${state.cognition_layer}, world_rule=${state.world_rule ? 'yes' : 'no'}`);
 
     // ============================================================
     // 【v8】全路径硬收尾条件（不依赖 AI 的 session_complete）
@@ -1917,7 +1980,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '14.0-reflective-dialogue',
+    version: '14.2-robust-parser',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
@@ -1931,7 +1994,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v14 - 反映式对话表达');
+  console.log('组织镜子 v14.2 - 健壮解析器');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
   console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);
@@ -1953,10 +2016,10 @@ app.listen(PORT, () => {
     console.log(`案例库状态: ${active} 条活跃案例 / ${cases.length} 条总计`);
   }
 
-  console.log('\nv14 核心变化:');
-  console.log('  1. 姿态转换：从"苏格拉底式审问"变成"并排坐着一起看"');
-  console.log('  2. 四手法：反映 + 并置 + 叙事邀请 + 外化（替换连环追问）');
-  console.log('  3. 红线：建设性不适感必须还在，别滑成情绪按摩');
+  console.log('\nv14.2 核心变化:');
+  console.log('  1. 移除 response_format（DeepSeek 多轮对话不稳定）');
+  console.log('  2. 健壮解析器：支持纯文本/混合输出回退');
+  console.log('  3. 纯文本时保留 state 中的路径信息');
   console.log(`  - 硬上限: early=${HARD_CAPS.early}轮, strategy=${HARD_CAPS.strategy}轮, org=${HARD_CAPS.org}轮`);
 
   console.log('\n' + '='.repeat(60));
