@@ -1070,17 +1070,16 @@ app.post('/api/respond', async (req, res) => {
 
       sessionStates.delete(sid);
 
-      // 【v14.3】自动学习：尝试采纳为案例
+      // 【v14.3】自动学习：尝试采纳为案例（同步等待，避免 serverless 截断）
       if (autoLearn) {
-        autoLearn.tryAutoAdopt(state, history, response.discovery_output, sid, closeReason)
-          .then(result => {
-            if (result.adopted) {
-              console.log(`[AutoLearn] ✓ 会话 ${sid} 已采纳为案例 ${result.caseId}, 质量分=${result.qualityScore.toFixed(2)}, embedding=${result.hasEmbedding}`);
-            }
-          })
-          .catch(err => {
-            console.error('[AutoLearn] 采纳失败:', err.message);
-          });
+        try {
+          const result = await autoLearn.tryAutoAdopt(state, history, response.discovery_output, sid, closeReason);
+          if (result.adopted) {
+            console.log(`[AutoLearn] ✓ 会话 ${sid} 已采纳为案例 ${result.caseId}, 质量分=${result.qualityScore.toFixed(2)}, embedding=${result.hasEmbedding}`);
+          }
+        } catch (err) {
+          console.error('[AutoLearn] 采纳失败:', err.message);
+        }
       }
     }
 
