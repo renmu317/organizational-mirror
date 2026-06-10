@@ -1222,31 +1222,75 @@ function buildDefaultDiscoveryOutput(state, history = []) {
     return null;
   };
 
-  // 【v12.1】strategy 路径（增强）
+  // 【v14.2】strategy 路径（增强提取逻辑）
   if (state.path === 'strategy') {
-    // 【v14 兜底】从对话历史提取信息（当 state 字段为空时）
+    // 【v14.2】智能提取：分析 AI 问题 + 用户回答的配对
     const extractFromHistory = () => {
-      let target = null, chain = [], weakest = null, assumption = null, pressure = null;
+      let target = null, chain = [], weakest = null, assumption = null, pressure = null, nextStep = null;
 
-      for (const msg of userMessages) {
-        // 提取目标
-        if (!target && (msg.includes('想要') || msg.includes('目标') || msg.includes('希望') || msg.includes('转化'))) {
-          target = msg.slice(0, 100);
+      // 遍历对话，找 AI 问题后的用户回答
+      for (let i = 0; i < history.length - 1; i++) {
+        const aiMsg = history[i];
+        const userMsg = history[i + 1];
+        if (aiMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
+
+        const aiText = aiMsg.content || '';
+        const userText = userMsg.content || '';
+
+        // 1. 提取目标（AI 问"想要什么结果"后的回答）
+        if (!target && (aiText.includes('想要') || aiText.includes('结果') || aiText.includes('目标'))) {
+          target = userText.slice(0, 150);
         }
-        // 提取假设
-        if (!assumption && (msg.includes('假设') || msg.includes('以为') || msg.includes('认为') || msg.includes('默认'))) {
-          assumption = msg.slice(0, 100);
+
+        // 2. 提取决策链（AI 问"要经过哪几步"后的回答）
+        if (chain.length === 0 && (aiText.includes('几步') || aiText.includes('步骤') || aiText.includes('链条'))) {
+          // 尝试拆分用户的步骤描述
+          const steps = userText.split(/[，,。；;、→]/).filter(s => s.trim().length > 2);
+          if (steps.length >= 2) {
+            chain = steps.slice(0, 5).map(s => s.trim().slice(0, 30));
+          }
         }
-        // 提取压力测试结果
-        if (!pressure && (msg.includes('如果错') || msg.includes('如果不') || msg.includes('会塌') || msg.includes('风险'))) {
-          pressure = msg.slice(0, 100);
+
+        // 3. 提取承重环（AI 问"哪一环最不确定/没把握"后的回答）
+        if (!weakest && (aiText.includes('不确定') || aiText.includes('没把握') || aiText.includes('承重') || aiText.includes('关键'))) {
+          weakest = userText.slice(0, 150);
         }
-        // 提取承重环
-        if (!weakest && (msg.includes('不确定') || msg.includes('没把握') || msg.includes('关键'))) {
-          weakest = msg.slice(0, 100);
+
+        // 4. 提取假设（AI 问"默认什么是真的"后的回答）
+        if (!assumption && (aiText.includes('默认') || aiText.includes('假设') || aiText.includes('没验证'))) {
+          assumption = userText.slice(0, 150);
+        }
+
+        // 5. 提取压力测试结果（AI 问"如果假设错了会怎样"后的回答）
+        if (!pressure && (aiText.includes('如果') && (aiText.includes('错') || aiText.includes('不成立') || aiText.includes('不对')))) {
+          pressure = userText.slice(0, 150);
+        }
+
+        // 6. 提取下一步（AI 问"接下来先做什么"后的回答）
+        if (!nextStep && (aiText.includes('接下来') || aiText.includes('先') || aiText.includes('下一步') || aiText.includes('验证'))) {
+          if (userText.length > 10) {
+            nextStep = userText.slice(0, 150);
+          }
         }
       }
-      return { target, chain, weakest, assumption, pressure };
+
+      // 备用：从用户消息关键词提取
+      for (const msg of userMessages) {
+        if (!target && msg.length > 20 && (msg.includes('想要') || msg.includes('希望') || msg.includes('目标'))) {
+          target = msg.slice(0, 150);
+        }
+        if (!assumption && msg.length > 20 && (msg.includes('以为') || msg.includes('认为') || msg.includes('觉得'))) {
+          assumption = msg.slice(0, 150);
+        }
+        if (!pressure && msg.length > 15 && (msg.includes('如果不') || msg.includes('风险') || msg.includes('失败') || msg.includes('没有'))) {
+          pressure = msg.slice(0, 150);
+        }
+        if (!nextStep && msg.length > 15 && (msg.includes('先') || msg.includes('第一') || msg.includes('接下来') || msg.includes('打算'))) {
+          nextStep = msg.slice(0, 150);
+        }
+      }
+
+      return { target, chain, weakest, assumption, pressure, nextStep };
     };
 
     const fallback = extractFromHistory();
@@ -1267,9 +1311,7 @@ function buildDefaultDiscoveryOutput(state, history = []) {
       weakest_link: state.weakest_link || fallback.weakest || null,
       hidden_assumption: state.hidden_assumption || fallback.assumption || null,
       pressure_test_result: state.pressure_test_result || fallback.pressure || null,
-      next_step: userMessages.find(m =>
-        m.includes('先') || m.includes('第一步') || m.includes('接下来')
-      )?.slice(0, 100) || null,
+      next_step: state.next_step || fallback.nextStep || null,
       prediction: extractPrediction(),  // 【v12.2】可证伪预测
       next_gap_hook: strategyHook
     };
