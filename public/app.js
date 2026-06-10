@@ -1,5 +1,13 @@
 /**
- * 组织镜子 - 前端逻辑 (v9 侧边栏 + 用户管理)
+ * 组织镜子 - 前端逻辑 (v12 策略型分流)
+ *
+ * v12 新增：
+ * - 新增 strategy 路径输出卡
+ * - buildStrategyPathCard 函数
+ *
+ * v11 新增：
+ * - 发现卡末尾显示「下一道缝」机会钩
+ * - pull 式措辞（"如果你想..."）
  *
  * v9 新增：
  * - 开场姓名弹窗
@@ -844,6 +852,10 @@ class OrganizationalMirror {
       // 早期路径输出卡
       cardTitle.textContent = '你的验证计划';
       cardContent.innerHTML = this.buildEarlyPathCard(output);
+    } else if (path === 'strategy') {
+      // 【v12】策略型输出卡
+      cardTitle.textContent = '你的决策';
+      cardContent.innerHTML = this.buildStrategyPathCard(output);
     } else {
       // 组织路径输出卡
       cardTitle.textContent = '你的发现';
@@ -864,7 +876,7 @@ class OrganizationalMirror {
    * 构建早期路径输出卡
    */
   buildEarlyPathCard(output) {
-    return `
+    let html = `
       <div class="card-field">
         <label>当前想法/挑战</label>
         <p>${output.current_idea || output.current_problem || '—'}</p>
@@ -911,6 +923,79 @@ class OrganizationalMirror {
         </div>
       </div>
     `;
+
+    // 【v11】机会钩（仅当有值时显示）
+    if (output.next_gap_hook) {
+      html += `
+        <div class="card-field next-gap-hook">
+          <label>下一道缝（如果你想）</label>
+          <p class="pull-style">${output.next_gap_hook}</p>
+        </div>
+      `;
+    }
+
+    return html;
+  }
+
+  /**
+   * 【v12.1】构建策略型输出卡（增强）
+   */
+  buildStrategyPathCard(output) {
+    // 决策链渲染
+    let chainHtml = '—';
+    if (output.decision_chain && output.decision_chain.length > 0) {
+      chainHtml = output.decision_chain
+        .map((item, i) => {
+          const isLast = i === output.decision_chain.length - 1;
+          return `<span class="mini-chain-node">${item}</span>${isLast ? '' : '<span class="mini-chain-arrow">→</span>'}`;
+        })
+        .join('');
+    }
+
+    let html = `
+      <div class="card-field">
+        <label>你要做的决策</label>
+        <p>${output.decision || '—'}</p>
+      </div>
+      <div class="card-field">
+        <label>你想要的结果</label>
+        <p>${output.target_outcome || '—'}</p>
+      </div>
+      <div class="card-field">
+        <label>决策链条</label>
+        <div class="world-model-content">
+          <div class="mini-causal-chain">${chainHtml}</div>
+        </div>
+      </div>
+      <div class="card-field highlight">
+        <label>最关键的承重环</label>
+        <p>${output.weakest_link || '—'}</p>
+      </div>
+      <div class="card-field">
+        <label>你默认、但没验证的假设</label>
+        <p>${output.hidden_assumption || '—'}</p>
+      </div>
+      <div class="card-field highlight">
+        <label>压力测试结果</label>
+        <p>${output.pressure_test_result || '—'}</p>
+      </div>
+      <div class="card-field highlight">
+        <label>接下来先验证的一步</label>
+        <p>${output.next_step || '—'}</p>
+      </div>
+    `;
+
+    // 【v11】机会钩
+    if (output.next_gap_hook) {
+      html += `
+        <div class="card-field next-gap-hook">
+          <label>下一道缝（如果你想）</label>
+          <p class="pull-style">${output.next_gap_hook}</p>
+        </div>
+      `;
+    }
+
+    return html;
   }
 
   /**
@@ -928,7 +1013,7 @@ class OrganizationalMirror {
         .join('');
     }
 
-    return `
+    let html = `
       <div class="card-field">
         <label>当前问题定义</label>
         <p>${output.current_problem || '—'}</p>
@@ -981,6 +1066,18 @@ class OrganizationalMirror {
         </div>
       </div>
     `;
+
+    // 【v11】机会钩（仅当有值时显示）
+    if (output.next_gap_hook) {
+      html += `
+        <div class="card-field next-gap-hook">
+          <label>下一道缝（如果你想）</label>
+          <p class="pull-style">${output.next_gap_hook}</p>
+        </div>
+      `;
+    }
+
+    return html;
   }
 
   hideDiscoveryCard() {
@@ -998,7 +1095,40 @@ class OrganizationalMirror {
     const date = new Date().toLocaleDateString('zh-CN');
     let markdown = '';
 
-    if (path === 'early') {
+    if (path === 'strategy') {
+      // 【v12】策略型报告
+      const decisionChain = output.decision_chain?.join(' → ') || '—';
+      markdown = `# 决策报告
+
+> 生成日期：${date}
+
+## 你要做的决策
+
+${output.decision || '—'}
+
+## 决策链条
+
+${decisionChain}
+
+## 最不确定的一环
+
+${output.weakest_link || '—'}
+
+## 你默认、但没验证的假设
+
+${output.hidden_assumption || '—'}
+
+## 接下来先做的一步
+
+${output.next_step || '—'}
+
+${output.next_gap_hook ? `---
+
+## 下一道缝（如果你想）
+
+${output.next_gap_hook}` : ''}
+`;
+    } else if (path === 'early') {
       markdown = `# 验证计划报告
 
 > 生成日期：${date}
@@ -1105,7 +1235,13 @@ ${output.redefined_problem || '—'}
 
     const link = document.createElement('a');
     link.href = url;
-    const filename = this.lastPath === 'early' ? '验证计划报告.md' : '发现报告.md';
+    // 【v12】添加 strategy 路径文件名
+    let filename = '发现报告.md';
+    if (this.lastPath === 'early') {
+      filename = '验证计划报告.md';
+    } else if (this.lastPath === 'strategy') {
+      filename = '决策报告.md';
+    }
     link.download = filename;
     document.body.appendChild(link);
     link.click();

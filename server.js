@@ -1,5 +1,26 @@
 /**
- * 组织镜子 v8 - 全路径硬收尾 + 用户结束按钮
+ * 组织镜子 v12.1 - 策略型分流 + 压力测试
+ *
+ * v12.1 核心改动：
+ * 1. 策略型八步流程（含压力测试）
+ *    - 环境 → 想要的结果 → 拆因果链 → 找承重环 → 照出假设 → 压力测试 → 重角色/行为 → 收敛下一步
+ * 2. 收尾条件更严格：has_decision_clarity + has_pressure_test + has_next_step
+ * 3. 新增字段：target_outcome, pressure_test_result
+ * 4. 撬出假设后禁止立即收尾，必须做压力测试
+ *
+ * v12 核心改动：
+ * 1. 新增 strategy 路径（当下决策问题，不往过去挖）
+ *    - 分流判据：怎么办、要不要、该不该、接下来、计划、准备、周五怎么
+ *    - 提问骨架：澄清决策 → 拆链条 → 找最不确定环 → 撬隐藏假设 → 收敛下一步
+ * 2. 策略型收尾条件：has_decision_clarity + has_pressure_test + has_next_step 或 12轮硬上限
+ * 3. 策略型输出卡：decision/target_outcome/decision_chain/weakest_link/hidden_assumption/pressure_test_result/next_step
+ *
+ * v11 核心改动：
+ * 1. 在发现卡末尾新增「下一道缝」机会钩（next_gap_hook）
+ *    - 闭环时自动生成，pull 式措辞（"如果你想..."）
+ *    - 三条红线：机会钩永远是 pull、闭环优先、去留无条件
+ * 2. retrospective 分支措辞克制（不暗示挽回已倒闭的公司）
+ * 3. AI 可在 JSON 中返回 next_gap_hook，优先使用
  *
  * v8 核心改动：
  * 1. 全路径硬收尾条件（不依赖 AI 的 session_complete）：
@@ -177,15 +198,13 @@ async function saveSessionToSupabase(session) {
       body: JSON.stringify({
         id: session.id,
         created_at: session.timestamp,
-        surface_problem: session.surface_problem,
-        initial_explanation: session.initial_explanation,
+        // 【v12.1 fix】只保留 Supabase 表实际存在的列
         history: session.history,
         discovery_output: session.discovery_output,
         path: session.path || 'unknown',
         branch: session.branch || null,
-        followup_due: session.followup_due,
-        user_id: session.user_id || null,  // 【v9】关联用户
-        title: session.title || null        // 【v9】会话标题
+        user_id: session.user_id || null,
+        title: session.title || null
       })
     });
 
@@ -334,21 +353,30 @@ async function callDeepSeek(systemPrompt, messages, hasImage = false) {
   // 注意：DeepSeek 目前 vision 模型可能需要不同配置
   const model = hasImage ? DEEPSEEK_VISION_MODEL : 'deepseek-chat';
 
+  // 【v12.1 fix】构建请求体
+  const requestBody = {
+    model: model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ],
+    temperature: 0.7,
+    max_tokens: 1500
+  };
+
+  // 【v12.1 fix】非 vision 模式下强制 JSON 输出，防止 JSON.parse 失败导致状态机瘫痪
+  // vision 模型可能不支持 response_format，故含图轮次不加
+  if (!hasImage) {
+    requestBody.response_format = { type: 'json_object' };
+  }
+
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
     },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ],
-      temperature: 0.7,
-      max_tokens: 1500
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -392,14 +420,20 @@ function parseAIResponse(content) {
   try {
     return JSON.parse(content);
   } catch (e) {
+    // 【v12.1 debug】第一次解析失败，尝试提取 JSON
+    console.error('[parse fail] first try, error:', e.message);
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         return JSON.parse(jsonMatch[0]);
       } catch (e2) {
+        // 【v12.1 debug】提取后仍失败，记录原始内容
+        console.error('[parse fail] raw:', content.slice(0, 500));
         return createDefaultResponse(content);
       }
     }
+    // 【v12.1 debug】没找到 JSON 结构
+    console.error('[parse fail] no JSON found, raw:', content.slice(0, 500));
     return createDefaultResponse(content);
   }
 }
@@ -429,8 +463,9 @@ function createDefaultResponse(content) {
 // 【v8】硬收尾阈值配置
 // ============================================================
 const HARD_CAPS = {
-  early: 8,   // early 硬上限 8 轮
-  org: 18     // org 硬上限 18 轮
+  early: 8,      // early 硬上限 8 轮
+  org: 18,       // org 硬上限 18 轮
+  strategy: 12   // 【v12】strategy 硬上限 12 轮
 };
 
 // ============================================================
@@ -466,7 +501,17 @@ function getOrCreateState(sessionId) {
       // 【v8 新增】收尾追踪
       rule_turn_count: 0,           // 挖到 world_rule 后又问了几轮
       has_success_definition: false, // early: 用户是否给出了成功定义
-      has_experiment_action: false   // early: 用户是否给出了实验行动
+      has_experiment_action: false,  // early: 用户是否给出了实验行动
+
+      // 【v12.1】策略型追踪（增强）
+      has_decision_clarity: false,  // 用户是否已想清楚决策
+      has_next_step: false,         // 用户是否给出可执行下一步
+      has_pressure_test: false,     // ★ 新增：是否完成压力测试
+      decision_chain: [],           // 决策链条
+      weakest_link: '',             // 最不确定的一环
+      hidden_assumption: '',        // 暴露的隐藏假设
+      target_outcome: '',           // ★ 新增：想要的结果
+      pressure_test_result: ''      // ★ 新增：压力测试结果
     });
   }
   return sessionStates.get(sessionId);
@@ -586,6 +631,30 @@ function updateStateFromAIResponse(state, parsed, userReply) {
       state.has_experiment_action = true;
     }
   }
+
+  // 【v12.1】strategy 路径收尾追踪（增强）
+  if (state.path === 'strategy') {
+    if (detectDecisionClarity(userReply)) {
+      state.has_decision_clarity = true;
+    }
+    if (detectNextStep(userReply)) {
+      state.has_next_step = true;
+    }
+    if (detectPressureTest(userReply)) {
+      state.has_pressure_test = true;  // ★ 新增：压力测试检测
+    }
+    // 提取 AI 返回的字段
+    if (parsed.decision_chain) state.decision_chain = parsed.decision_chain;
+    if (parsed.weakest_link) state.weakest_link = parsed.weakest_link;
+    if (parsed.hidden_assumption) state.hidden_assumption = parsed.hidden_assumption;
+    if (parsed.target_outcome) state.target_outcome = parsed.target_outcome;  // ★ 新增
+    if (parsed.pressure_test_result) state.pressure_test_result = parsed.pressure_test_result;  // ★ 新增
+  }
+
+  // 【v11】如果 AI 返回了 next_gap_hook，保存到 state
+  if (parsed.next_gap_hook) {
+    state.ai_generated_hook = parsed.next_gap_hook;
+  }
 }
 
 // ============================================================
@@ -607,6 +676,38 @@ function detectExperimentAction(userReply) {
   // 有时间词
   const hasTime = ['天', '周', '月', '明天', '今天', '本周', '这周', '下周'].some(k => r.includes(k));
   return hasAction && (hasTime || r.length >= 15);
+}
+
+// ============================================================
+// 【v12】strategy 路径收尾检测
+// ============================================================
+function detectDecisionClarity(userReply) {
+  const r = (userReply || '').toLowerCase();
+  // 有具体行动词 + 有对象
+  const actionKeywords = ['做', '试', '改', '加', '设计', '准备', '安排', '决定', '选择'];
+  const hasAction = actionKeywords.some(k => r.includes(k));
+  return hasAction && r.length >= 15;
+}
+
+function detectNextStep(userReply) {
+  const r = (userReply || '').toLowerCase();
+  // 有动词 + 有时间/场景词
+  const nextStepKeywords = ['先', '第一步', '接下来', '明天', '周五', '今天', '然后', '首先'];
+  return nextStepKeywords.some(k => r.includes(k));
+}
+
+// ============================================================
+// 【v12.1】压力测试检测
+// ============================================================
+function detectPressureTest(userReply) {
+  const r = (userReply || '').toLowerCase();
+  // 用户经历压力测试后的典型回应
+  const pressureKeywords = [
+    '如果不', '如果错', '那就', '会塌', '会崩', '完了', '没了',
+    '确实没想过', '原来', '好像是', '真的会', '可能会失败',
+    '风险是', '最坏', '万一', '如果假设错', '假设不成立'
+  ];
+  return pressureKeywords.some(k => r.includes(k));
 }
 
 // ============================================================
@@ -731,6 +832,15 @@ app.post('/api/respond', async (req, res) => {
     // 6. 用户主动请求结束
     const userRequestedEnd = !!endRequested;
 
+    // 【v12.1】策略型收尾（更严格）
+    const strategyReady = state.path === 'strategy'
+      && state.has_decision_clarity
+      && state.has_pressure_test    // ★ 新增：必须经过压力测试
+      && state.has_next_step;
+
+    const strategyCap = state.path === 'strategy'
+      && state.total_turns >= HARD_CAPS.strategy;
+
     // 综合判定
     const shouldEnd = parsed.session_complete
       || retrospectiveDone
@@ -738,6 +848,8 @@ app.post('/api/respond', async (req, res) => {
       || earlyReady
       || earlyCap
       || orgCap
+      || strategyReady     // 【v12】新增
+      || strategyCap       // 【v12】新增
       || userRequestedEnd;
 
     // 记录触发原因
@@ -748,6 +860,8 @@ app.post('/api/respond', async (req, res) => {
     else if (earlyReady) closeReason = 'early_ready';
     else if (earlyCap) closeReason = 'early_cap';
     else if (orgCap) closeReason = 'org_cap';
+    else if (strategyReady) closeReason = 'strategy_ready';    // 【v12】新增
+    else if (strategyCap) closeReason = 'strategy_cap';        // 【v12】新增
     else if (userRequestedEnd) closeReason = 'user_requested';
 
     if (shouldEnd) {
@@ -765,6 +879,9 @@ app.post('/api/respond', async (req, res) => {
         finalReply = `很好，你已经有了一个可以在 7 天内验证的实验计划。去执行吧，回来告诉我结果。`;
       } else if (orgCap) {
         finalReply = `我们聊了很多。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层。你可以带着这些思考，之后再继续探索。`;
+      } else if (strategyReady || strategyCap) {
+        // 【v12】策略型兜底收尾语
+        finalReply = `你已经把这个决策想清楚了${state.weakest_link ? `：最关键的是"${state.weakest_link}"这一环` : ''}。接下来就去做，做完回来告诉我结果。`;
       } else if (userRequestedEnd) {
         finalReply = `好的，我们就聊到这里。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层${state.world_rule ? `，你提到的规则是"${state.world_rule.slice(0, 30)}..."` : ''}。`;
       }
@@ -861,6 +978,33 @@ function buildDefaultDiscoveryOutput(state, history = []) {
 
   const originalProblem = state.originalProblem || userMessages[0] || '未记录';
 
+  // 【v11】生成机会钩（仅闭环时）
+  // 硬约束：
+  // 1. 机会钩永远是 pull、门虚掩（"如果你想..."）
+  // 2. 闭环优先于钩子——用户必须能干净离开
+  // 3. 去留无条件——位置决定语气，永远不决定去留
+  let next_gap_hook = null;
+
+  // 优先使用 AI 生成的 hook
+  if (state.ai_generated_hook) {
+    next_gap_hook = state.ai_generated_hook;
+  } else if (state.world_rule && state.world_rule.trim()) {
+    // org 路径：从世界规则反推下一道缝
+    if (state.branch === 'retrospective') {
+      // 复盘分支：措辞克制（不暗示挽回已倒闭的公司）
+      next_gap_hook = `下次创业如果遇到类似处境，你最先想看清的会是什么？`;
+    } else {
+      // actionable 分支
+      const rulePreview = state.world_rule.length > 30
+        ? state.world_rule.slice(0, 30) + '...'
+        : state.world_rule;
+      next_gap_hook = `既然你已经看清"${rulePreview}"——你手上还在用这套老逻辑运转的，还有哪一块？想看的话，下次可以从那里开始。`;
+    }
+  } else if (state.path === 'early' && state.has_experiment_action) {
+    // early 路径：验证完成后
+    next_gap_hook = `等你验证完这一轮，如果发现预测和现实不符，那个"不符"里可能藏着下一道值得挖的缝。`;
+  }
+
   // 提取实验内容
   const findExperimentContent = () => {
     let experiment = '', criteria = '', hypothesis = '';
@@ -891,6 +1035,30 @@ function buildDefaultDiscoveryOutput(state, history = []) {
     return assumptions.length > 0 ? assumptions.slice(0, 3) : [null];
   };
 
+  // 【v12.1】strategy 路径（增强）
+  if (state.path === 'strategy') {
+    // 生成机会钩
+    let strategyHook = null;
+    if (state.ai_generated_hook) {
+      strategyHook = state.ai_generated_hook;
+    } else if (state.hidden_assumption) {
+      strategyHook = `你这个决策想清楚了——而你刚才那条"${state.hidden_assumption.slice(0, 20)}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
+    }
+
+    return {
+      decision: state.originalProblem || userMessages[0] || '未记录',
+      target_outcome: state.target_outcome || null,                    // ★ 新增
+      decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : null,
+      weakest_link: state.weakest_link || null,
+      hidden_assumption: state.hidden_assumption || null,
+      pressure_test_result: state.pressure_test_result || null,        // ★ 新增
+      next_step: userMessages.find(m =>
+        m.includes('先') || m.includes('第一步') || m.includes('接下来')
+      )?.slice(0, 100) || null,
+      next_gap_hook: strategyHook
+    };
+  }
+
   // early 路径
   if (state.path === 'early') {
     const exp = findExperimentContent();
@@ -905,7 +1073,8 @@ function buildDefaultDiscoveryOutput(state, history = []) {
         success_criteria: exp.criteria || '成功标准',
         time_horizon: '7天',
         owner: '你'
-      }
+      },
+      next_gap_hook  // 【v11】出口机会钩
     };
   }
 
@@ -932,7 +1101,8 @@ function buildDefaultDiscoveryOutput(state, history = []) {
       world_rule: state.world_rule || null,
       next_early_signal: findEarlyWarning(),
       is_retrospective: true,
-      no_experiment: true
+      no_experiment: true,
+      next_gap_hook  // 【v11】出口机会钩
     };
   }
 
@@ -952,7 +1122,8 @@ function buildDefaultDiscoveryOutput(state, history = []) {
       success_criteria: exp.criteria || '成功标准',
       time_horizon: '7天',
       owner: '你'
-    }
+    },
+    next_gap_hook  // 【v11】出口机会钩
   };
 }
 
@@ -987,9 +1158,7 @@ app.post('/api/session/save', async (req, res) => {
       discovery_output: discoveryOutput || null,
       path: path || 'unknown',
       branch: branch || null,
-      followup_result: null,
-      followup_due: (discoveryOutput?.seven_day_experiment && branch !== 'retrospective') ?
-        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
+      // 【v12.1 fix】删除 followup_due/followup_result，Supabase 表无此列，决策层延后
       depth_metrics: finalDepthMetrics || null,
       user_id: user_id || null,  // 【v9】关联用户
       title: title               // 【v9】会话标题
@@ -1594,11 +1763,11 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '9.0-sidebar-admin',
+    version: '12.1-strategy-pressure-test',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
-    architecture: 'v9-sidebar-admin-vision',
+    architecture: 'v12-strategy-path',
     hard_caps: HARD_CAPS
   });
 });
@@ -1608,7 +1777,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v9 - 侧边栏 + 后台 + 图片上传');
+  console.log('组织镜子 v12.1 - 策略型分流 + 压力测试');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
   console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);
@@ -1630,11 +1799,11 @@ app.listen(PORT, () => {
     console.log(`案例库状态: ${active} 条活跃案例 / ${cases.length} 条总计`);
   }
 
-  console.log('\nv9 新功能:');
-  console.log('  1. 历史对话侧边栏（用户名 + 会话列表 + 回看）');
-  console.log('  2. /admin 后台增强（密码保护 + 用户浏览 + 会话详情）');
-  console.log('  3. 图片上传分析（base64 + 多模态提问）');
-  console.log(`  - 硬上限: early=${HARD_CAPS.early}轮, org=${HARD_CAPS.org}轮`);
+  console.log('\nv12.1 新功能:');
+  console.log('  1. 策略型八步流程（含压力测试）');
+  console.log('  2. 收尾条件更严格：必须经过压力测试');
+  console.log('  3. 产出卡增加：想要的结果 + 压力测试结果');
+  console.log(`  - 硬上限: early=${HARD_CAPS.early}轮, strategy=${HARD_CAPS.strategy}轮, org=${HARD_CAPS.org}轮`);
 
   console.log('\n' + '='.repeat(60));
 });
