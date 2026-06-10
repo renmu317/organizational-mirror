@@ -59,13 +59,15 @@ const {
 // 向量检索和提示词优化（可选模块）
 let vectorSearch = null;
 let promptOptimizer = null;
+let autoLearn = null;
 
 try {
   vectorSearch = require('./lib/vector-search');
   promptOptimizer = require('./lib/prompt-optimizer');
-  console.log('✓ 向量检索和提示词优化模块已加载');
+  autoLearn = require('./lib/auto-learn');
+  console.log('✓ 向量检索、提示词优化、自动学习模块已加载');
 } catch (e) {
-  console.log('⚠ 向量检索/优化模块未加载（可选）');
+  console.log('⚠ 可选模块未完全加载:', e.message);
 }
 
 // 会话状态存储（内存中）
@@ -1067,6 +1069,19 @@ app.post('/api/respond', async (req, res) => {
       }
 
       sessionStates.delete(sid);
+
+      // 【v14.3】自动学习：尝试采纳为案例
+      if (autoLearn) {
+        autoLearn.tryAutoAdopt(state, history, response.discovery_output, sid, closeReason)
+          .then(result => {
+            if (result.adopted) {
+              console.log(`[AutoLearn] ✓ 会话 ${sid} 已采纳为案例 ${result.caseId}, 质量分=${result.qualityScore.toFixed(2)}, embedding=${result.hasEmbedding}`);
+            }
+          })
+          .catch(err => {
+            console.error('[AutoLearn] 采纳失败:', err.message);
+          });
+      }
     }
 
     // 【v9】实时保存/更新会话到 Supabase（每轮都保存，确保有 user_id）
