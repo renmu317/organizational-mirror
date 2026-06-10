@@ -1,5 +1,12 @@
 /**
- * 组织镜子 - 前端逻辑 (v12 策略型分流)
+ * 组织镜子 - 前端逻辑 (v12 策略型分流 + v10 双语)
+ *
+ * v10 新增（2026-06-10）：
+ * - 中英双语支持（照见 / Hindsight）
+ * - 界面语言随时切换（侧边栏语言按钮）
+ * - 对话语言开场定、整场固定（首次进入弹窗选择）
+ * - i18n.js 字典 + t(key) 翻译函数
+ * - 所有 UI 文本、发现卡标签、报告下载均已本地化
  *
  * v12 新增：
  * - 新增 strategy 路径输出卡
@@ -23,6 +30,9 @@ class OrganizationalMirror {
     this.sessionId = null;
     this.sessionComplete = false;
     this.isLoading = false;
+
+    // 【v10】语言状态
+    this.conversationLang = null;  // 对话语言（开场定，整场固定）
 
     // 【v9】用户状态
     this.currentUser = null;
@@ -79,6 +89,10 @@ class OrganizationalMirror {
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
     this.previewImg = document.getElementById('previewImg');
     this.removeImageBtn = document.getElementById('removeImageBtn');
+
+    // 【v10】语言相关元素
+    this.langModalOverlay = document.getElementById('langModalOverlay');
+    this.langToggleBtn = document.getElementById('langToggleBtn');
 
     // 绑定事件
     this.bindEvents();
@@ -186,10 +200,111 @@ class OrganizationalMirror {
     this.removeImageBtn?.addEventListener('click', () => {
       this.clearPendingImage();
     });
+
+    // 【v10】语言选择按钮
+    document.querySelectorAll('.lang-option-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.dataset.lang;
+        this.selectLanguage(lang);
+      });
+    });
+
+    // 【v10】语言切换按钮（界面语言）
+    this.langToggleBtn?.addEventListener('click', () => {
+      this.toggleUILanguage();
+    });
   }
 
   async init() {
-    // 【v9】检查本地存储的用户信息
+    // 【v10】检查是否已选择语言
+    const savedLang = localStorage.getItem('mirror_conversation_lang');
+
+    if (savedLang) {
+      // 已有语言设置，使用保存的语言
+      this.conversationLang = savedLang;
+      setUILang(savedLang);
+      setConversationLang(savedLang);
+      this.updateAllUIText();
+      this.checkUserAndProceed();
+    } else {
+      // 首次进入，显示语言选择
+      this.showLangModal();
+    }
+  }
+
+  // 【v10】显示语言选择弹窗
+  showLangModal() {
+    this.langModalOverlay.style.display = 'flex';
+  }
+
+  // 【v10】隐藏语言选择弹窗
+  hideLangModal() {
+    this.langModalOverlay.style.display = 'none';
+  }
+
+  // 【v10】选择语言（开场）
+  selectLanguage(lang) {
+    this.conversationLang = lang;
+    setUILang(lang);
+    setConversationLang(lang);
+
+    // 保存到本地存储
+    localStorage.setItem('mirror_conversation_lang', lang);
+
+    this.hideLangModal();
+    this.updateAllUIText();
+    this.checkUserAndProceed();
+  }
+
+  // 【v10】切换界面语言
+  toggleUILanguage() {
+    const currentLang = getUILang();
+    const newLang = currentLang === 'zh' ? 'en' : 'zh';
+    setUILang(newLang);
+    this.updateAllUIText();
+  }
+
+  // 【v10】更新所有界面文本
+  updateAllUIText() {
+    // 页面标题
+    document.getElementById('pageTitle').textContent = t('app_title');
+
+    // 侧边栏
+    document.getElementById('sidebarLogo').textContent = t('app_title');
+    this.newChatBtn.textContent = t('sidebar_new');
+    this.langToggleBtn.textContent = t('lang_toggle');
+
+    // 欢迎区域
+    document.getElementById('welcomeLogo').textContent = t('app_title');
+    document.getElementById('welcomeTagline').textContent = t('app_subtitle');
+
+    // 姓名弹窗
+    document.getElementById('welcomeTitle').textContent = t('welcome_title');
+    document.getElementById('welcomeHint').textContent = t('welcome_hint');
+    this.nameInput.placeholder = t('name_placeholder');
+    this.companyInput.placeholder = t('company_placeholder');
+    this.nameSubmitBtn.textContent = t('btn_start');
+
+    // 输入区
+    this.userInput.placeholder = t('input_placeholder');
+    document.getElementById('inputHint').textContent = t('input_hint');
+    this.endSessionBtn.textContent = t('btn_end');
+    this.otherInput.placeholder = t('other_placeholder');
+    this.otherSubmit.textContent = t('btn_submit');
+
+    // 加载状态
+    document.getElementById('loadingText').textContent = t('thinking');
+
+    // 发现卡按钮
+    document.getElementById('downloadCard').textContent = t('btn_download');
+    document.getElementById('restartBtn').textContent = t('btn_restart');
+
+    // 侧边栏会话列表
+    this.renderSessionList();
+  }
+
+  // 【v10】检查用户并继续
+  checkUserAndProceed() {
     const savedUser = localStorage.getItem('mirror_user');
 
     if (savedUser) {
@@ -224,7 +339,7 @@ class OrganizationalMirror {
     if (!name) return;
 
     this.nameSubmitBtn.disabled = true;
-    this.nameSubmitBtn.textContent = 'Loading...';
+    this.nameSubmitBtn.textContent = t('loading');
 
     try {
       const response = await fetch('/api/users', {
@@ -236,9 +351,9 @@ class OrganizationalMirror {
       const data = await response.json();
 
       if (data.error) {
-        alert('Failed to create user: ' + data.error);
+        alert(t('error_create_user') + data.error);
         this.nameSubmitBtn.disabled = false;
-        this.nameSubmitBtn.textContent = 'Start Conversation';
+        this.nameSubmitBtn.textContent = t('btn_start');
         return;
       }
 
@@ -250,9 +365,9 @@ class OrganizationalMirror {
 
     } catch (error) {
       console.error('Error creating user:', error);
-      alert('Network error. Please try again.');
+      alert(t('error_network'));
       this.nameSubmitBtn.disabled = false;
-      this.nameSubmitBtn.textContent = 'Start Conversation';
+      this.nameSubmitBtn.textContent = t('btn_start');
     }
   }
 
@@ -289,7 +404,7 @@ class OrganizationalMirror {
     if (!this.sidebarSessions) return;
 
     if (this.sessions.length === 0) {
-      this.sidebarSessions.innerHTML = '<div class="sidebar-empty">No conversations yet</div>';
+      this.sidebarSessions.innerHTML = `<div class="sidebar-empty">${t('sidebar_empty')}</div>`;
       return;
     }
 
@@ -376,8 +491,8 @@ class OrganizationalMirror {
     const banner = document.createElement('div');
     banner.className = 'replay-banner';
     banner.innerHTML = `
-      <p>You are viewing a past conversation</p>
-      <button class="btn-primary" id="replayNewChatBtn">Start New Conversation</button>
+      <p>${t('replay_hint')}</p>
+      <button class="btn-primary" id="replayNewChatBtn">${t('btn_new_chat')}</button>
     `;
     document.body.appendChild(banner);
 
@@ -444,14 +559,14 @@ class OrganizationalMirror {
     // 检查文件类型
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      alert('Please select a JPG, PNG, or WebP image.');
+      alert(t('error_image_type'));
       return;
     }
 
     // 检查文件大小（5MB）
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('Image must be smaller than 5MB.');
+      alert(t('error_image_size'));
       return;
     }
 
@@ -513,8 +628,8 @@ class OrganizationalMirror {
     }
 
     const hints = {
-      'approaching_end': '快要结束了...',
-      'last_question': '最后一个问题'
+      'approaching_end': t('hint_approaching_end'),
+      'last_question': t('hint_last_question')
     };
 
     this.sessionHint.textContent = hints[hint] || '';
@@ -701,7 +816,8 @@ class OrganizationalMirror {
           history: this.history,
           sessionId: this.sessionId,
           userId: this.currentUser?.id || null, // 【v9】传递用户 ID
-          endRequested: endRequested // 【v8】用户请求结束
+          endRequested: endRequested, // 【v8】用户请求结束
+          conversationLang: this.conversationLang // 【v10】对话语言
         })
       });
 
@@ -710,7 +826,7 @@ class OrganizationalMirror {
       this.hideLoading();
 
       if (data.error) {
-        this.addMessage('抱歉，系统遇到了问题。请刷新页面重试。', 'ai');
+        this.addMessage(t('error_system'), 'ai');
         return;
       }
 
@@ -762,7 +878,7 @@ class OrganizationalMirror {
     } catch (error) {
       this.hideLoading();
       console.error('Error:', error);
-      this.addMessage('网络连接出现问题，请检查后重试。', 'ai');
+      this.addMessage(t('error_network'), 'ai');
     }
   }
 
@@ -850,15 +966,15 @@ class OrganizationalMirror {
 
     if (path === 'early') {
       // 早期路径输出卡
-      cardTitle.textContent = '你的验证计划';
+      cardTitle.textContent = t('card_title_plan');
       cardContent.innerHTML = this.buildEarlyPathCard(output);
     } else if (path === 'strategy') {
       // 【v12】策略型输出卡
-      cardTitle.textContent = '你的决策';
+      cardTitle.textContent = t('card_title_decision');
       cardContent.innerHTML = this.buildStrategyPathCard(output);
     } else {
       // 组织路径输出卡
-      cardTitle.textContent = '你的发现';
+      cardTitle.textContent = t('card_title_discovery');
       cardContent.innerHTML = this.buildOrgPathCard(output);
     }
 
@@ -876,49 +992,50 @@ class OrganizationalMirror {
    * 构建早期路径输出卡
    */
   buildEarlyPathCard(output) {
+    const nc = t('not_covered');
     let html = `
       <div class="card-field">
-        <label>当前想法/挑战</label>
-        <p>${output.current_idea || output.current_problem || '—'}</p>
+        <label>${t('field_current_idea')}</label>
+        <p>${output.current_idea || output.current_problem || nc}</p>
       </div>
       <div class="card-field">
-        <label>核心假设</label>
-        <p>${output.core_assumption || '—'}</p>
+        <label>${t('field_core_assumption')}</label>
+        <p>${output.core_assumption || nc}</p>
       </div>
       <div class="card-field highlight">
-        <label>被撬动的假设</label>
-        <p>${output.challenged_assumption || '—'}</p>
+        <label>${t('field_challenged_assumption')}</label>
+        <p>${output.challenged_assumption || nc}</p>
       </div>
       <div class="card-field">
-        <label>你的预测</label>
-        <p>${output.prediction || '—'}</p>
+        <label>${t('field_prediction')}</label>
+        <p>${output.prediction || nc}</p>
       </div>
       <div class="card-field">
-        <label>验证成功定义</label>
-        <p>${output.success_definition || '—'}</p>
+        <label>${t('field_success_definition')}</label>
+        <p>${output.success_definition || nc}</p>
       </div>
       <div class="card-field highlight">
-        <label>更新后的问题定义</label>
-        <p>${output.redefined_problem || '—'}</p>
+        <label>${t('field_redefined_problem')}</label>
+        <p>${output.redefined_problem || nc}</p>
       </div>
       <div class="card-section experiment-section">
-        <h3>你的7天验证实验</h3>
+        <h3>${t('field_validation_title')}</h3>
         <div class="card-field">
-          <label>最小验证</label>
-          <p>${output.seven_day_experiment?.experiment || '—'}</p>
+          <label>${t('field_min_validation')}</label>
+          <p>${output.seven_day_experiment?.experiment || nc}</p>
         </div>
         <div class="card-field">
-          <label>成功标准</label>
-          <p>${output.seven_day_experiment?.success_criteria || '—'}</p>
+          <label>${t('field_success_criteria')}</label>
+          <p>${output.seven_day_experiment?.success_criteria || nc}</p>
         </div>
         <div class="card-row">
           <div class="card-field half">
-            <label>时间</label>
-            <p>${output.seven_day_experiment?.time_horizon || '7天'}</p>
+            <label>${t('field_time')}</label>
+            <p>${output.seven_day_experiment?.time_horizon || t('default_time')}</p>
           </div>
           <div class="card-field half">
-            <label>负责人</label>
-            <p>${output.seven_day_experiment?.owner || '你'}</p>
+            <label>${t('field_owner')}</label>
+            <p>${output.seven_day_experiment?.owner || t('default_owner')}</p>
           </div>
         </div>
       </div>
@@ -928,7 +1045,7 @@ class OrganizationalMirror {
     if (output.next_gap_hook) {
       html += `
         <div class="card-field next-gap-hook">
-          <label>下一道缝（如果你想）</label>
+          <label>${t('field_next_gap')}</label>
           <p class="pull-style">${output.next_gap_hook}</p>
         </div>
       `;
@@ -938,11 +1055,13 @@ class OrganizationalMirror {
   }
 
   /**
-   * 【v12.2】构建策略型输出卡（含可证伪预测）
+   * 【v15】构建策略型输出卡（世界规则版）
    */
   buildStrategyPathCard(output) {
+    const nc = t('not_covered');
+
     // 决策链渲染
-    let chainHtml = '—';
+    let chainHtml = nc;
     if (output.decision_chain && output.decision_chain.length > 0) {
       chainHtml = output.decision_chain
         .map((item, i) => {
@@ -954,45 +1073,46 @@ class OrganizationalMirror {
 
     let html = `
       <div class="card-field">
-        <label>你要做的决策</label>
-        <p>${output.decision || '—'}</p>
+        <label>${t('field_decision')}</label>
+        <p>${output.decision || nc}</p>
       </div>
       <div class="card-field">
-        <label>你想要的结果</label>
-        <p>${output.target_outcome || '—'}</p>
+        <label>${t('field_target_outcome')}</label>
+        <p>${output.target_outcome || nc}</p>
       </div>
       <div class="card-field">
-        <label>决策链条</label>
+        <label>${t('field_decision_chain')}</label>
         <div class="world-model-content">
           <div class="mini-causal-chain">${chainHtml}</div>
         </div>
       </div>
       <div class="card-field highlight">
-        <label>最关键的承重环</label>
-        <p>${output.weakest_link || '—'}</p>
+        <label>${t('field_weakest_link')}</label>
+        <p>${output.weakest_link || nc}</p>
       </div>
       <div class="card-field">
-        <label>你默认、但没验证的假设</label>
-        <p>${output.hidden_assumption || '—'}</p>
+        <label>${t('field_hidden_assumption')}</label>
+        <p>${output.hidden_assumption || nc}</p>
+      </div>
+      <div class="card-field">
+        <label>${t('field_assumption_source')}</label>
+        <p>${output.assumption_source || nc}</p>
+      </div>
+      <div class="card-field highlight world-rule">
+        <label>${t('field_world_rule')}</label>
+        <p>${output.world_rule || nc}</p>
       </div>
       <div class="card-field highlight">
-        <label>压力测试结果</label>
-        <p>${output.pressure_test_result || '—'}</p>
-      </div>
-      <div class="card-field highlight">
-        <label>接下来先验证的一步</label>
-        <p>${output.next_step || '—'}</p>
+        <label>${t('field_next_step')}</label>
+        <p>${output.next_step || nc}</p>
       </div>
     `;
-
-    // 【v12.2】可证伪预测
-    html += this.buildPredictionSection(output.prediction);
 
     // 【v11】机会钩
     if (output.next_gap_hook) {
       html += `
         <div class="card-field next-gap-hook">
-          <label>下一道缝（如果你想）</label>
+          <label>${t('field_next_gap')}</label>
           <p class="pull-style">${output.next_gap_hook}</p>
         </div>
       `;
@@ -1009,30 +1129,30 @@ class OrganizationalMirror {
       return '';
     }
 
-    const placeholder = '<span class="prediction-placeholder">待你填</span>';
+    const placeholder = `<span class="prediction-placeholder">${t('placeholder_fill')}</span>`;
 
     return `
       <div class="card-section prediction-section">
-        <h3>你的预测（可验证）</h3>
+        <h3>${t('field_prediction_title')}</h3>
         <div class="prediction-grid">
           <div class="prediction-field">
-            <label>预测指标</label>
+            <label>${t('field_prediction_object')}</label>
             <p>${prediction.object || placeholder}</p>
           </div>
           <div class="prediction-field">
-            <label>如果不改</label>
+            <label>${t('field_if_unchanged')}</label>
             <p>${prediction.if_unchanged || placeholder}</p>
           </div>
           <div class="prediction-field">
-            <label>如果改变</label>
+            <label>${t('field_if_changed')}</label>
             <p>${prediction.if_changed || placeholder}</p>
           </div>
           <div class="prediction-field">
-            <label>价值/代价</label>
+            <label>${t('field_stake')}</label>
             <p>${prediction.stake || placeholder}</p>
           </div>
           <div class="prediction-field">
-            <label>验证时间</label>
+            <label>${t('field_verify_window')}</label>
             <p>${prediction.verify_window || placeholder}</p>
           </div>
         </div>
@@ -1044,8 +1164,10 @@ class OrganizationalMirror {
    * 构建组织路径输出卡
    */
   buildOrgPathCard(output) {
+    const nc = t('not_covered');
+
     // 因果链渲染
-    let causalChainHtml = '—';
+    let causalChainHtml = nc;
     if (output.world_model?.causal_chain && output.world_model.causal_chain.length > 0) {
       causalChainHtml = output.world_model.causal_chain
         .map((item, i) => {
@@ -1057,53 +1179,53 @@ class OrganizationalMirror {
 
     let html = `
       <div class="card-field">
-        <label>当前问题定义</label>
-        <p>${output.current_problem || '—'}</p>
+        <label>${t('field_current_problem')}</label>
+        <p>${output.current_problem || nc}</p>
       </div>
       <div class="card-field">
-        <label>当前世界模型（因果链）</label>
+        <label>${t('field_causal_chain')}</label>
         <div class="world-model-content">
           <div class="mini-causal-chain">${causalChainHtml}</div>
         </div>
       </div>
       <div class="card-field">
-        <label>隐藏假设</label>
-        <p>${output.world_model?.hidden_assumptions?.join('；') || '—'}</p>
+        <label>${t('field_hidden_assumptions')}</label>
+        <p>${output.world_model?.hidden_assumptions?.join('；') || nc}</p>
       </div>
       <div class="card-field highlight">
-        <label>可能缺失的变量</label>
-        <p>${output.missing_variables?.join('、') || '—'}</p>
+        <label>${t('field_missing_variables')}</label>
+        <p>${output.missing_variables?.join('、') || nc}</p>
       </div>
       <div class="card-field">
-        <label>好奇问题</label>
-        <p>${output.curiosity_questions?.join('；') || '—'}</p>
+        <label>${t('field_curiosity_questions')}</label>
+        <p>${output.curiosity_questions?.join('；') || nc}</p>
       </div>
       <div class="card-field highlight">
-        <label>更新后的问题定义</label>
-        <p>${output.redefined_problem || '—'}</p>
+        <label>${t('field_redefined_problem')}</label>
+        <p>${output.redefined_problem || nc}</p>
       </div>
       <div class="card-section experiment-section">
-        <h3>你的7天实验</h3>
+        <h3>${t('field_experiment_title')}</h3>
         <div class="card-field">
-          <label>假设</label>
-          <p>${output.seven_day_experiment?.hypothesis || '—'}</p>
+          <label>${t('field_hypothesis')}</label>
+          <p>${output.seven_day_experiment?.hypothesis || nc}</p>
         </div>
         <div class="card-field">
-          <label>实验</label>
-          <p>${output.seven_day_experiment?.experiment || '—'}</p>
+          <label>${t('field_experiment')}</label>
+          <p>${output.seven_day_experiment?.experiment || nc}</p>
         </div>
         <div class="card-field">
-          <label>成功标准</label>
-          <p>${output.seven_day_experiment?.success_criteria || '—'}</p>
+          <label>${t('field_success_criteria')}</label>
+          <p>${output.seven_day_experiment?.success_criteria || nc}</p>
         </div>
         <div class="card-row">
           <div class="card-field half">
-            <label>时间</label>
-            <p>${output.seven_day_experiment?.time_horizon || '—'}</p>
+            <label>${t('field_time')}</label>
+            <p>${output.seven_day_experiment?.time_horizon || t('default_time')}</p>
           </div>
           <div class="card-field half">
-            <label>负责人</label>
-            <p>${output.seven_day_experiment?.owner || '—'}</p>
+            <label>${t('field_owner')}</label>
+            <p>${output.seven_day_experiment?.owner || t('default_owner')}</p>
           </div>
         </div>
       </div>
@@ -1118,7 +1240,7 @@ class OrganizationalMirror {
     if (output.next_gap_hook) {
       html += `
         <div class="card-field next-gap-hook">
-          <label>下一道缝（如果你想）</label>
+          <label>${t('field_next_gap')}</label>
           <p class="pull-style">${output.next_gap_hook}</p>
         </div>
       `;
@@ -1139,128 +1261,139 @@ class OrganizationalMirror {
    * 生成 Markdown 格式报告
    */
   generateReportMarkdown(output, path) {
-    const date = new Date().toLocaleDateString('zh-CN');
+    const lang = getUILang();
+    const dateLocale = lang === 'zh' ? 'zh-CN' : 'en-US';
+    const date = new Date().toLocaleDateString(dateLocale);
+    const nc = t('not_covered');
     let markdown = '';
 
     if (path === 'strategy') {
       // 【v12】策略型报告
-      const decisionChain = output.decision_chain?.join(' → ') || '—';
-      markdown = `# 决策报告
+      const decisionChain = output.decision_chain?.join(' → ') || nc;
+      const title = lang === 'zh' ? '决策报告' : 'Decision Report';
+      const genDate = lang === 'zh' ? '生成日期' : 'Generated';
 
-> 生成日期：${date}
+      markdown = `# ${title}
 
-## 你要做的决策
+> ${genDate}：${date}
 
-${output.decision || '—'}
+## ${t('field_decision')}
 
-## 决策链条
+${output.decision || nc}
+
+## ${t('field_decision_chain')}
 
 ${decisionChain}
 
-## 最不确定的一环
+## ${t('field_weakest_link')}
 
-${output.weakest_link || '—'}
+${output.weakest_link || nc}
 
-## 你默认、但没验证的假设
+## ${t('field_hidden_assumption')}
 
-${output.hidden_assumption || '—'}
+${output.hidden_assumption || nc}
 
-## 接下来先做的一步
+## ${t('field_next_step')}
 
-${output.next_step || '—'}
+${output.next_step || nc}
 
 ${output.next_gap_hook ? `---
 
-## 下一道缝（如果你想）
+## ${t('field_next_gap')}
 
 ${output.next_gap_hook}` : ''}
 `;
     } else if (path === 'early') {
-      markdown = `# 验证计划报告
+      const title = lang === 'zh' ? '验证计划报告' : 'Validation Plan Report';
+      const genDate = lang === 'zh' ? '生成日期' : 'Generated';
 
-> 生成日期：${date}
+      markdown = `# ${title}
 
-## 当前想法/挑战
+> ${genDate}：${date}
 
-${output.current_idea || output.current_problem || '—'}
+## ${t('field_current_idea')}
 
-## 核心假设
+${output.current_idea || output.current_problem || nc}
 
-${output.core_assumption || '—'}
+## ${t('field_core_assumption')}
 
-## 被撬动的假设
+${output.core_assumption || nc}
 
-${output.challenged_assumption || '—'}
+## ${t('field_challenged_assumption')}
 
-## 你的预测
+${output.challenged_assumption || nc}
 
-${output.prediction || '—'}
+## ${t('field_prediction')}
 
-## 验证成功定义
+${output.prediction || nc}
 
-${output.success_definition || '—'}
+## ${t('field_success_definition')}
 
-## 更新后的问题定义
+${output.success_definition || nc}
 
-${output.redefined_problem || '—'}
+## ${t('field_redefined_problem')}
+
+${output.redefined_problem || nc}
 
 ---
 
-## 7天验证实验
+## ${t('field_validation_title')}
 
-| 项目 | 内容 |
+| ${lang === 'zh' ? '项目' : 'Field'} | ${lang === 'zh' ? '内容' : 'Content'} |
 |------|------|
-| **最小验证** | ${output.seven_day_experiment?.experiment || '—'} |
-| **成功标准** | ${output.seven_day_experiment?.success_criteria || '—'} |
-| **时间** | ${output.seven_day_experiment?.time_horizon || '7天'} |
-| **负责人** | ${output.seven_day_experiment?.owner || '你'} |
+| **${t('field_min_validation')}** | ${output.seven_day_experiment?.experiment || nc} |
+| **${t('field_success_criteria')}** | ${output.seven_day_experiment?.success_criteria || nc} |
+| **${t('field_time')}** | ${output.seven_day_experiment?.time_horizon || t('default_time')} |
+| **${t('field_owner')}** | ${output.seven_day_experiment?.owner || t('default_owner')} |
 `;
     } else {
       // org 路径
-      const causalChain = output.world_model?.causal_chain?.join(' → ') || '—';
-      const hiddenAssumptions = output.world_model?.hidden_assumptions?.join('；') || '—';
-      const missingVariables = output.missing_variables?.join('、') || '—';
-      const curiosityQuestions = output.curiosity_questions?.join('；') || '—';
+      const causalChain = output.world_model?.causal_chain?.join(' → ') || nc;
+      const hiddenAssumptions = output.world_model?.hidden_assumptions?.join('；') || nc;
+      const missingVariables = output.missing_variables?.join('、') || nc;
+      const curiosityQuestions = output.curiosity_questions?.join('；') || nc;
+      const title = lang === 'zh' ? '发现报告' : 'Discovery Report';
+      const genDate = lang === 'zh' ? '生成日期' : 'Generated';
 
-      markdown = `# 发现报告
+      markdown = `# ${title}
 
-> 生成日期：${date}
+> ${genDate}：${date}
 
-## 当前问题定义
+## ${t('field_current_problem')}
 
-${output.current_problem || '—'}
+${output.current_problem || nc}
 
-## 当前世界模型（因果链）
+## ${t('field_causal_chain')}
 
 ${causalChain}
 
-## 隐藏假设
+## ${t('field_hidden_assumptions')}
 
 ${hiddenAssumptions}
 
-## 可能缺失的变量
+## ${t('field_missing_variables')}
 
 ${missingVariables}
 
-## 好奇问题
+## ${t('field_curiosity_questions')}
 
 ${curiosityQuestions}
 
-## 更新后的问题定义
+## ${t('field_redefined_problem')}
 
-${output.redefined_problem || '—'}
+${output.redefined_problem || nc}
 
 ---
 
-## 7天实验
+## ${t('field_experiment_title')}
 
-| 项目 | 内容 |
+| ${lang === 'zh' ? '项目' : 'Field'} | ${lang === 'zh' ? '内容' : 'Content'} |
 |------|------|
-| **假设** | ${output.seven_day_experiment?.hypothesis || '—'} |
-| **实验** | ${output.seven_day_experiment?.experiment || '—'} |
-| **成功标准** | ${output.seven_day_experiment?.success_criteria || '—'} |
-| **时间** | ${output.seven_day_experiment?.time_horizon || '—'} |
-| **负责人** | ${output.seven_day_experiment?.owner || '—'} |
+| **${t('field_hypothesis')}** | ${output.seven_day_experiment?.hypothesis || nc} |
+| **${t('field_experiment')}** | ${output.seven_day_experiment?.experiment || nc} |
+| **${t('field_success_criteria')}** | ${output.seven_day_experiment?.success_criteria || nc} |
+| **${t('field_time')}** | ${output.seven_day_experiment?.time_horizon || nc} |
+| **${t('field_owner')}** | ${output.seven_day_experiment?.owner || nc} |
 `;
     }
 
@@ -1272,7 +1405,7 @@ ${output.redefined_problem || '—'}
    */
   downloadReport() {
     if (!this.lastDiscoveryOutput) {
-      alert('没有可下载的报告');
+      alert(t('error_no_report'));
       return;
     }
 
@@ -1282,12 +1415,15 @@ ${output.redefined_problem || '—'}
 
     const link = document.createElement('a');
     link.href = url;
-    // 【v12】添加 strategy 路径文件名
-    let filename = '发现报告.md';
+    // 【v12】添加 strategy 路径文件名 + 【v10】双语支持
+    const lang = getUILang();
+    let filename;
     if (this.lastPath === 'early') {
-      filename = '验证计划报告.md';
+      filename = lang === 'zh' ? '验证计划报告.md' : 'validation-plan.md';
     } else if (this.lastPath === 'strategy') {
-      filename = '决策报告.md';
+      filename = lang === 'zh' ? '决策报告.md' : 'decision-report.md';
+    } else {
+      filename = lang === 'zh' ? '发现报告.md' : 'discovery-report.md';
     }
     link.download = filename;
     document.body.appendChild(link);

@@ -1,7 +1,8 @@
 /*
- * 照见 - 暖白 · 精品咨询室
+ * 照见 / Hindsight - 暖白 · 精品咨询室
  * Warm white theme with restrained gold accents
  * v11.0 - 问题/机会双脸循环
+ * v10.0 - 中英双语支持
  */
 
 :root {
@@ -626,6 +627,25 @@ body {
   font-weight: 500;
 }
 
+/* 【v15】世界规则字段特殊强调 */
+.card-field.world-rule {
+  background: var(--bg);
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+  margin: 8px 0;
+}
+
+.card-field.world-rule label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.card-field.world-rule p {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
 /* 未涉及字段 */
 .card-field.empty p {
   color: var(--text-faint);
@@ -1014,6 +1034,99 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-faint);
+}
+
+/* ===== 【v10】语言选择弹窗 ===== */
+.lang-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(43, 39, 34, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.lang-modal {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px;
+  width: 90%;
+  max-width: 380px;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(43, 39, 34, 0.15);
+}
+
+.lang-modal h2 {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.lang-modal p {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+
+.lang-options {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.lang-option-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  background: var(--bg);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lang-option-btn:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.lang-flag {
+  font-size: 28px;
+}
+
+.lang-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* 【v10】语言切换按钮 */
+.lang-toggle-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lang-toggle-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ===== 【v9】姓名弹窗 ===== */

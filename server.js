@@ -438,20 +438,35 @@ function convertMessagesForAPI(messages) {
 function detectPathFromMessage(userMessage) {
   const msg = (userMessage || '').toLowerCase();
 
-  // strategy 信号词（面向未来决策）
-  const strategyKeywords = ['怎么办', '要不要', '该不该', '接下来', '计划', '准备', '周五', '明天', '这周', '下周', 'demo', '方案', '选择', '决定'];
+  // strategy 信号词（面向未来决策）【v10】双语
+  const strategyKeywords = [
+    // 中文
+    '怎么办', '要不要', '该不该', '接下来', '计划', '准备', '周五', '明天', '这周', '下周', '方案', '选择', '决定',
+    // 英文
+    'decide', 'decision', 'should i', 'whether to', 'planning', 'next step', 'friday', 'tomorrow', 'this week', 'next week', 'demo', 'launch', 'option', 'choose'
+  ];
   if (strategyKeywords.some(k => msg.includes(k))) {
     return 'strategy';
   }
 
-  // early 信号词（没有客户/没验证）
-  const earlyKeywords = ['没有客户', '还没上线', '想法阶段', '没验证', '没收入', '刚开始', '想做'];
+  // early 信号词（没有客户/没验证）【v10】双语
+  const earlyKeywords = [
+    // 中文
+    '没有客户', '还没上线', '想法阶段', '没验证', '没收入', '刚开始', '想做',
+    // 英文
+    'no customers', 'not launched', 'idea stage', 'not validated', 'no revenue', 'just starting', 'want to build', 'haven\'t tested'
+  ];
   if (earlyKeywords.some(k => msg.includes(k))) {
     return 'early';
   }
 
-  // org 信号词（面向过去/已有结果）
-  const orgKeywords = ['当时', '之前', '已经', '倒闭', '为什么会', '后来', '客户流失', '利润下滑', '失败', '出了问题'];
+  // org 信号词（面向过去/已有结果）【v10】双语
+  const orgKeywords = [
+    // 中文
+    '当时', '之前', '已经', '倒闭', '为什么会', '后来', '客户流失', '利润下滑', '失败', '出了问题',
+    // 英文
+    'back then', 'before', 'already', 'shut down', 'went wrong', 'after that', 'customer churn', 'revenue drop', 'failed', 'problem with'
+  ];
   if (orgKeywords.some(k => msg.includes(k))) {
     return 'org';
   }
@@ -548,7 +563,7 @@ function createDefaultResponse(content) {
 const HARD_CAPS = {
   early: 8,      // early 硬上限 8 轮
   org: 18,       // org 硬上限 18 轮
-  strategy: 16   // 【v14.3】strategy 硬上限改为 16 轮（删除 12 轮无条件收尾）
+  strategy: 24   // 【v15】strategy 硬上限改为 24 轮（安全网，只防技术性失控）
 };
 
 // ============================================================
@@ -600,6 +615,56 @@ function getOrCreateState(sessionId) {
     });
   }
   return sessionStates.get(sessionId);
+}
+
+// ============================================================
+// 【v14.3】从 history 恢复状态（serverless 环境必需）
+// ============================================================
+function recoverStateFromHistory(state, history) {
+  // 如果已有状态，无需恢复
+  if (state.path !== 'unknown') return;
+
+  const userMessages = history.filter(m => m.role === 'user');
+  if (userMessages.length === 0) return;
+
+  // 1. 从第一条用户消息检测 path
+  const firstMsg = userMessages[0]?.content || '';
+  state.path = detectPathFromMessage(firstMsg);
+  state.originalProblem = firstMsg;
+  state.total_turns = userMessages.length;
+
+  // 2. 回放所有用户消息，恢复各种标志
+  for (const msg of userMessages) {
+    const content = msg.content || '';
+
+    // early 路径
+    if (state.path === 'early') {
+      if (detectSuccessDefinition(content)) state.has_success_definition = true;
+      if (detectExperimentAction(content)) state.has_experiment_action = true;
+    }
+
+    // strategy 路径
+    if (state.path === 'strategy') {
+      if (detectDecisionClarity(content)) state.has_decision_clarity = true;
+      if (detectNextStep(content)) state.has_next_step = true;
+      if (detectPressureTest(content)) state.has_pressure_test = true;
+      if (detectValueEvaluation(content)) state.has_value_evaluation = true;
+      // 【v15】从用户消息中恢复 world_rule
+      const detectedRule = detectWorldRule(content);
+      if (detectedRule && !state.world_rule) {
+        state.world_rule = detectedRule;
+      }
+    }
+
+    // org 路径
+    if (state.path === 'org') {
+      if (detectRetrospective(content)) state.branch = 'retrospective';
+      // world_rule 检测需要从 AI 响应中提取，这里无法恢复
+    }
+  }
+
+  console.log(`[v14.3] 从 history 恢复状态: path=${state.path}, turns=${state.total_turns}, ` +
+    `decision_clarity=${state.has_decision_clarity}, pressure_test=${state.has_pressure_test}, next_step=${state.has_next_step}`);
 }
 
 // ============================================================
@@ -717,7 +782,7 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     }
   }
 
-  // 【v14.3】strategy 路径收尾追踪（增强）
+  // 【v15】strategy 路径收尾追踪（世界规则版）
   if (state.path === 'strategy') {
     if (detectDecisionClarity(userReply)) {
       state.has_decision_clarity = true;
@@ -729,7 +794,13 @@ function updateStateFromAIResponse(state, parsed, userReply) {
       state.has_pressure_test = true;
     }
     if (detectValueEvaluation(userReply)) {
-      state.has_value_evaluation = true;  // 【v14.3】价值评估
+      state.has_value_evaluation = true;
+    }
+    // 【v15】从用户消息中检测世界规则
+    const detectedRule = detectWorldRule(userReply);
+    if (detectedRule && !state.world_rule) {
+      state.world_rule = detectedRule;
+      console.log(`[v15] 检测到世界规则: "${detectedRule.slice(0, 50)}..."`);
     }
     if (detectPrediction(userReply, parsed)) {
       state.has_prediction = true;  // 【v14.3】预测
@@ -774,17 +845,33 @@ function detectExperimentAction(userReply) {
 // ============================================================
 function detectDecisionClarity(userReply) {
   const r = (userReply || '').toLowerCase();
-  // 有具体行动词 + 有对象
-  const actionKeywords = ['做', '试', '改', '加', '设计', '准备', '安排', '决定', '选择'];
+  // 有具体行动词或确认词
+  const actionKeywords = ['做', '试', '改', '加', '设计', '准备', '安排', '决定', '选择', '打电话', '确认', '验证'];
+  const confirmKeywords = ['明白', '清楚', '知道', '懂了', '理解', '好的', 'ok', '行'];
   const hasAction = actionKeywords.some(k => r.includes(k));
-  return hasAction && r.length >= 15;
+  const hasConfirm = confirmKeywords.some(k => r.includes(k));
+  // 【v14.3 fix】放宽条件：有行动词（长度>=10）或有确认词
+  return (hasAction && r.length >= 10) || hasConfirm;
 }
 
 function detectNextStep(userReply) {
   const r = (userReply || '').toLowerCase();
-  // 有动词 + 有时间/场景词
-  const nextStepKeywords = ['先', '第一步', '接下来', '明天', '周五', '今天', '然后', '首先'];
-  return nextStepKeywords.some(k => r.includes(k));
+
+  // 【v15】更严格的 next_step 检测：必须有行动词 + 时间/顺序词
+  // 纯时间背景（如"周五有个demo"）不算 next_step
+
+  // 行动词：表示用户要采取的具体行动
+  const actionWords = ['做', '试', '验证', '问', '打电话', '发消息', '约', '找', '去', '测', '确认', '检查', '开始'];
+  // 顺序词：表示"接下来"的意图
+  const sequenceWords = ['先', '第一步', '接下来', '然后', '首先', '打算', '计划', '准备'];
+
+  const hasAction = actionWords.some(k => r.includes(k));
+  const hasSequence = sequenceWords.some(k => r.includes(k));
+
+  // 必须同时有行动词和顺序词，或者有明确的"我先/我打算"句式
+  const explicitIntent = r.includes('我先') || r.includes('我打算') || r.includes('我计划') || r.includes('我准备');
+
+  return (hasAction && hasSequence) || explicitIntent;
 }
 
 // ============================================================
@@ -794,7 +881,8 @@ function detectPressureTest(userReply) {
   const r = (userReply || '').toLowerCase();
   // 用户经历压力测试后的典型回应
   const pressureKeywords = [
-    '如果不', '如果错', '那就', '会塌', '会崩', '完了', '没了',
+    '如果不', '如果错', '如果没', '如果是错', '如果失败',
+    '那就', '会塌', '会崩', '完了', '没了', '白费', '白做',
     '确实没想过', '原来', '好像是', '真的会', '可能会失败',
     '风险是', '最坏', '万一', '如果假设错', '假设不成立'
   ];
@@ -813,6 +901,39 @@ function detectValueEvaluation(userReply) {
   const hasNumber = /\d/.test(r);
   const hasQuantifier = /[几多少大小高低]/.test(r) || r.includes('倍') || r.includes('半');
   return hasValueWord && (hasNumber || hasQuantifier);
+}
+
+// ============================================================
+// 【v15】世界规则检测（用户说出底层信念时提取）
+// ============================================================
+function detectWorldRule(userReply) {
+  const r = (userReply || '');
+  const rLower = r.toLowerCase();
+
+  // 世界规则标志词（用户表达底层信念的典型模式）
+  const rulePatterns = [
+    '我一直觉得', '我一直认为', '我一直相信', '我总是觉得', '我总是认为',
+    '我相信', '我的原则是', '我的规则是', '我从来都', '我向来',
+    '只要', '只有', '必须', '一定要', '不然就', '否则就',
+    '我确实一直', '我确实在用', '我的确相信'
+  ];
+
+  // 英文模式
+  const rulePatternEn = [
+    'i always', 'i believe', 'i\'ve always', 'my rule is', 'my principle',
+    'i must', 'i have to', 'otherwise', 'or else'
+  ];
+
+  const hasRulePattern = rulePatterns.some(p => r.includes(p)) ||
+                         rulePatternEn.some(p => rLower.includes(p));
+
+  // 必须是陈述句，长度够（表达一个完整的信念）
+  if (hasRulePattern && r.length >= 15) {
+    // 提取规则内容（取前100字符作为规则摘要）
+    return r.slice(0, 100);
+  }
+
+  return null;
 }
 
 // ============================================================
@@ -853,12 +974,12 @@ function enforceL3Redline(parsed) {
 app.post('/api/respond', async (req, res) => {
   console.log('[v14.2] /api/respond called, history length:', req.body?.history?.length || 0);
   try {
-    const { history, sessionId, userId, endRequested } = req.body; // 【v8】新增 endRequested, 【v9】新增 userId
+    const { history, sessionId, userId, endRequested, conversationLang } = req.body; // 【v8】新增 endRequested, 【v9】新增 userId, 【v10】新增 conversationLang
     const sid = sessionId || `S${Date.now()}`;
 
-    // 新对话返回开场白
+    // 新对话返回开场白【v10】传递对话语言
     if (!history || history.length === 0) {
-      const opening = getOpeningMessage();
+      const opening = getOpeningMessage(conversationLang);
       const { internal_note, ...publicOpening } = opening;
       return res.json({
         ...publicOpening,
@@ -868,6 +989,9 @@ app.post('/api/respond', async (req, res) => {
 
     // 获取会话状态
     const state = getOrCreateState(sid);
+
+    // 【v14.3】从 history 恢复状态（serverless 环境必需）
+    recoverStateFromHistory(state, history);
 
     // 获取最后一条用户消息
     const lastUserMessage = history[history.length - 1]?.content || '';
@@ -903,8 +1027,8 @@ app.post('/api/respond', async (req, res) => {
       }
     }
 
-    // 【v7】构建系统提示词（无 wrapUpPressure）
-    let systemPrompt = buildSystemPrompt(caseHints, state);
+    // 【v7】构建系统提示词（无 wrapUpPressure）【v10】传递对话语言
+    let systemPrompt = buildSystemPrompt(caseHints, state, conversationLang);
 
     // 添加数据驱动的提示词补丁
     if (promptOptimizer) {
@@ -958,14 +1082,12 @@ app.post('/api/respond', async (req, res) => {
     // 6. 用户主动请求结束
     const userRequestedEnd = !!endRequested;
 
-    // 【v14.3】策略型收尾（加入价值+预测前置）
+    // 【v15】策略型收尾（挖到世界规则 + 轻的下一步）
     const strategyReady = state.path === 'strategy'
-      && state.has_pressure_test        // 必须经过压力测试
-      && state.has_value_evaluation     // 【v14.3】用户说出损失/代价/机会
-      && state.has_prediction           // 【v14.3】用户给出可量化预测
-      && state.has_next_step;
+      && state.world_rule              // 用户认领了世界规则
+      && state.has_next_step;          // 有轻的下一步
 
-    // 【v14.3】16 轮硬兜底（删除 12 轮无条件收尾）
+    // 【v15】24 轮硬兜底（安全网，只防技术性失控）
     const strategyCap = state.path === 'strategy'
       && state.total_turns >= HARD_CAPS.strategy;
 
@@ -1008,19 +1130,17 @@ app.post('/api/respond', async (req, res) => {
       } else if (orgCap) {
         finalReply = `我们聊了很多。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层。你可以带着这些思考，之后再继续探索。`;
       } else if (strategyReady) {
-        // 【v14.3】策略型完整收尾（压力测试+价值+预测都完成）
-        finalReply = `你已经把这个决策想清楚了${state.weakest_link ? `：最关键的是"${state.weakest_link}"这一环` : ''}。接下来就去做，做完回来告诉我结果。`;
+        // 【v15】策略型自然收尾（挖到世界规则）
+        const rulePreview = state.world_rule.slice(0, 50) + (state.world_rule.length > 50 ? '...' : '');
+        finalReply = conversationLang === 'en'
+          ? `You just said out loud the rule that's been running underneath — "${rulePreview}". That might be the most valuable thing to take from this conversation. What will you do in the next 7 days to test whether it still holds for this decision?`
+          : `你刚才说出了那条一直在底下运转的想法——"${rulePreview}"。这可能就是这次对话最值得你带走的。接下来 7 天，你打算怎么验证它在这次决策里还管不管用？`;
       } else if (strategyCap) {
-        // 【v14.3 fix】16轮兜底但未挖透，诚实收尾
-        const hasValue = state.has_value_evaluation;
-        const hasPred = state.has_prediction;
-        let depth = [];
-        if (state.has_pressure_test) depth.push('压力测试');
-        if (hasValue) depth.push('价值评估');
-        if (hasPred) depth.push('预测');
-        const depthStr = depth.length > 0 ? depth.join('、') : '初步梳理';
-        const missingStr = (!hasValue || !hasPred) ? '，价值和预测还没深入聊到' : '';
-        finalReply = `我们聊了不少，你已经看清了${state.weakest_link ? `"${state.weakest_link}"这个承重点` : '关键环节'}（${depthStr}）${missingStr}。可以带着这些先想想，有需要再继续。`;
+        // 【v15】24轮安全网兜底，温柔承接当下
+        const deepestFind = state.hidden_assumption || state.weakest_link || state.originalProblem?.slice(0, 30);
+        finalReply = conversationLang === 'en'
+          ? `We've covered a lot of ground. ${deepestFind ? `What you said about "${deepestFind}" — that might be worth sitting with.` : 'There\'s something here worth sitting with.'} Take these thoughts with you, and we can continue whenever you\'re ready.`
+          : `我们聊到这里，已经挖出了不少。${deepestFind ? `你刚才说的那个"${deepestFind}"——可能就是值得你再想想的。` : '这里面有些东西值得你再想想。'}可以带着这些先消化，有需要再继续。`;
       } else if (userRequestedEnd) {
         finalReply = `好的，我们就聊到这里。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层${state.world_rule ? `，你提到的规则是"${state.world_rule.slice(0, 30)}..."` : ''}。`;
       }
@@ -1059,7 +1179,7 @@ app.post('/api/respond', async (req, res) => {
         discoveryOutput = null;
       }
 
-      response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history, closeReason);
+      response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history, closeReason, conversationLang);
       console.log(`[v12.1] 收尾: path=${state.path}, reason=${closeReason}, discovery_output 字段:`, Object.keys(response.discovery_output));
       response.close_reason = closeReason; // 【v8】记录收尾原因
 
@@ -1071,11 +1191,16 @@ app.post('/api/respond', async (req, res) => {
       sessionStates.delete(sid);
 
       // 【v14.3】自动学习：尝试采纳为案例（同步等待，避免 serverless 截断）
+      console.log(`[AutoLearn] 开始评估: path=${state.path}, turns=${state.total_turns}, ` +
+        `decision_clarity=${state.has_decision_clarity}, pressure_test=${state.has_pressure_test}, ` +
+        `next_step=${state.has_next_step}, closeReason=${closeReason}`);
       if (autoLearn) {
         try {
           const result = await autoLearn.tryAutoAdopt(state, history, response.discovery_output, sid, closeReason);
           if (result.adopted) {
-            console.log(`[AutoLearn] ✓ 会话 ${sid} 已采纳为案例 ${result.caseId}, 质量分=${result.qualityScore.toFixed(2)}, embedding=${result.hasEmbedding}`);
+            console.log(`[AutoLearn] ✓ 已采纳: ${result.caseId}, 质量分=${result.qualityScore.toFixed(2)}`);
+          } else {
+            console.log(`[AutoLearn] ✗ 未采纳: ${result.reason}`);
           }
         } catch (err) {
           console.error('[AutoLearn] 采纳失败:', err.message);
@@ -1133,16 +1258,17 @@ app.post('/api/respond', async (req, res) => {
 // ============================================================
 // 构建默认发现输出
 // ============================================================
-function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
+function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, conversationLang = null) {
   const userMessages = history.filter(m => m.role === 'user').map(m => m.content);
   const aiMessages = history.filter(m => m.role === 'assistant').map(m => m.content);
+  const isEn = conversationLang === 'en';
 
   // 【v14.3 fix】strategyCap 兜底时，未挖到的字段显示"本次未深入"而非 null
   const isStrategyCap = closeReason === 'strategy_cap';
 
-  const originalProblem = state.originalProblem || userMessages[0] || '未记录';
+  const originalProblem = state.originalProblem || userMessages[0] || (isEn ? 'Not recorded' : '未记录');
 
-  // 【v11】生成机会钩（仅闭环时）
+  // 【v11】生成机会钩（仅闭环时）【v10】双语支持
   // 硬约束：
   // 1. 机会钩永远是 pull、门虚掩（"如果你想..."）
   // 2. 闭环优先于钩子——用户必须能干净离开
@@ -1156,50 +1282,62 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
     // org 路径：从世界规则反推下一道缝
     if (state.branch === 'retrospective') {
       // 复盘分支：措辞克制（不暗示挽回已倒闭的公司）
-      next_gap_hook = `下次创业如果遇到类似处境，你最先想看清的会是什么？`;
+      next_gap_hook = isEn
+        ? `If you start something new and face a similar situation, what would you want to see clearly first?`
+        : `下次创业如果遇到类似处境，你最先想看清的会是什么？`;
     } else {
       // actionable 分支
       const rulePreview = state.world_rule.length > 30
         ? state.world_rule.slice(0, 30) + '...'
         : state.world_rule;
-      next_gap_hook = `既然你已经看清"${rulePreview}"——你手上还在用这套老逻辑运转的，还有哪一块？想看的话，下次可以从那里开始。`;
+      next_gap_hook = isEn
+        ? `Now that you've seen "${rulePreview}" — what else in your business is still running on this old logic? If you want to look, we can start there next time.`
+        : `既然你已经看清"${rulePreview}"——你手上还在用这套老逻辑运转的，还有哪一块？想看的话，下次可以从那里开始。`;
     }
   } else if (state.path === 'early' && state.has_experiment_action) {
     // early 路径：验证完成后
-    next_gap_hook = `等你验证完这一轮，如果发现预测和现实不符，那个"不符"里可能藏着下一道值得挖的缝。`;
+    next_gap_hook = isEn
+      ? `Once you've run this validation, if reality doesn't match your prediction, that gap might be worth digging into next.`
+      : `等你验证完这一轮，如果发现预测和现实不符，那个"不符"里可能藏着下一道值得挖的缝。`;
   }
 
-  // 提取实验内容
+  // 提取实验内容【v10】双语关键词
   const findExperimentContent = () => {
     let experiment = '', criteria = '', hypothesis = '';
     for (const msg of userMessages) {
-      if (msg.includes('验证') || msg.includes('测试') || msg.includes('试试') || msg.includes('7天')) {
+      const msgLower = msg.toLowerCase();
+      if (msgLower.includes('验证') || msgLower.includes('测试') || msgLower.includes('试试') || msgLower.includes('7天') ||
+          msgLower.includes('validate') || msgLower.includes('test') || msgLower.includes('try') || msgLower.includes('7 day') || msgLower.includes('week')) {
         experiment = msg.slice(0, 100);
       }
-      if ((msg.includes('成功') || msg.includes('说明')) && /\d/.test(msg)) {
+      if ((msgLower.includes('成功') || msgLower.includes('说明') || msgLower.includes('success') || msgLower.includes('means')) && /\d/.test(msg)) {
         criteria = msg.slice(0, 80);
       }
-      if (msg.includes('如果') || msg.includes('假设')) {
+      if (msgLower.includes('如果') || msgLower.includes('假设') || msgLower.includes('if') || msgLower.includes('hypothesis') || msgLower.includes('assume')) {
         hypothesis = msg.slice(0, 80);
       }
     }
     return { experiment, criteria, hypothesis };
   };
 
-  // 提取错误假设
+  // 提取错误假设【v10】双语关键词
   const findWrongAssumptions = () => {
     const assumptions = [];
     for (const msg of userMessages) {
-      if (msg.includes('原来') || msg.includes('没想到') ||
-          msg.includes('我以为') || msg.includes('错了') ||
-          msg.includes('不对') || msg.includes('其实')) {
+      const msgLower = msg.toLowerCase();
+      if (msgLower.includes('原来') || msgLower.includes('没想到') ||
+          msgLower.includes('我以为') || msgLower.includes('错了') ||
+          msgLower.includes('不对') || msgLower.includes('其实') ||
+          msgLower.includes('realize') || msgLower.includes('didn\'t expect') ||
+          msgLower.includes('thought') || msgLower.includes('wrong') ||
+          msgLower.includes('actually') || msgLower.includes('turns out')) {
         assumptions.push(msg.slice(0, 80));
       }
     }
     return assumptions.length > 0 ? assumptions.slice(0, 3) : [null];
   };
 
-  // 【v14.3】提取可证伪预测（增强：分析 AI 问题 + 用户回答配对）
+  // 【v14.3】提取可证伪预测（增强：分析 AI 问题 + 用户回答配对）【v10】双语关键词
   const extractPrediction = () => {
     let object = null, if_unchanged = null, if_changed = null, stake = null, verify_window = null;
 
@@ -1209,66 +1347,74 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
       const userMsg = history[i + 1];
       if (aiMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
 
-      const aiText = aiMsg.content || '';
+      const aiText = (aiMsg.content || '').toLowerCase();
       const userText = userMsg.content || '';
 
       // 预测指标（AI 问"预测多少/几个会..."后的回答）
-      if (!object && (aiText.includes('预测') || aiText.includes('几个') || aiText.includes('多少'))) {
+      if (!object && (aiText.includes('预测') || aiText.includes('几个') || aiText.includes('多少') ||
+          aiText.includes('predict') || aiText.includes('how many') || aiText.includes('expect'))) {
         if (/\d/.test(userText)) {
           object = userText.slice(0, 80);
         }
       }
 
       // 如果不改（AI 问"现在/不改会怎样"后的回答）
-      if (!if_unchanged && (aiText.includes('现在') || aiText.includes('不改') || aiText.includes('维持'))) {
-        if (/\d/.test(userText) || userText.includes('不') || userText.includes('没')) {
+      if (!if_unchanged && (aiText.includes('现在') || aiText.includes('不改') || aiText.includes('维持') ||
+          aiText.includes('current') || aiText.includes('unchanged') || aiText.includes('stay the same'))) {
+        if (/\d/.test(userText) || userText.includes('不') || userText.includes('没') ||
+            userText.toLowerCase().includes('not') || userText.toLowerCase().includes('no')) {
           if_unchanged = userText.slice(0, 80);
         }
       }
 
       // 如果改变（AI 问"改了会怎样/能有多少"后的回答）
-      if (!if_changed && (aiText.includes('改了') || aiText.includes('能有') || aiText.includes('改变后'))) {
+      if (!if_changed && (aiText.includes('改了') || aiText.includes('能有') || aiText.includes('改变后') ||
+          aiText.includes('change') || aiText.includes('could have') || aiText.includes('after'))) {
         if (/\d/.test(userText) || userText.length > 15) {
           if_changed = userText.slice(0, 80);
         }
       }
 
       // 价值代价（AI 问"损失/代价/机会/值多少"后的回答）
-      if (!stake && (aiText.includes('损失') || aiText.includes('代价') || aiText.includes('机会') || aiText.includes('值'))) {
-        if (/\d/.test(userText) || userText.includes('万') || userText.includes('损失') || userText.includes('机会')) {
+      if (!stake && (aiText.includes('损失') || aiText.includes('代价') || aiText.includes('机会') || aiText.includes('值') ||
+          aiText.includes('lose') || aiText.includes('cost') || aiText.includes('opportunity') || aiText.includes('worth'))) {
+        if (/\d/.test(userText) || userText.includes('万') || userText.includes('损失') || userText.includes('机会') ||
+            userText.toLowerCase().includes('lose') || userText.toLowerCase().includes('gain') || userText.includes('$') || userText.includes('k')) {
           stake = userText.slice(0, 80);
         }
       }
 
       // 验证时间
-      if (!verify_window && (aiText.includes('验证') || aiText.includes('时间') || aiText.includes('多久'))) {
-        const timeMatch = userText.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天|\d+小时|一周)/);
+      if (!verify_window && (aiText.includes('验证') || aiText.includes('时间') || aiText.includes('多久') ||
+          aiText.includes('verify') || aiText.includes('time') || aiText.includes('how long'))) {
+        const timeMatch = userText.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天|\d+小时|一周|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week|\d+ days?|\d+ hours?|a week)/i);
         if (timeMatch) verify_window = timeMatch[1];
       }
     }
 
-    // 2. 备用：从用户消息关键词提取
+    // 2. 备用：从用户消息关键词提取【v10】双语
     for (const msg of userMessages) {
+      const msgLower = msg.toLowerCase();
       // 预测指标
       if (!object) {
-        const match = msg.match(/(\d+[个人位%].*?(?:转化|成交|签|付款|约))|(?:转化|成交|签|付款).*?(\d+[个人位%]?)/);
-        if (match) object = (match[1] || match[2] || '').slice(0, 80);
+        const match = msg.match(/(\d+[个人位%].*?(?:转化|成交|签|付款|约))|(?:转化|成交|签|付款).*?(\d+[个人位%]?)|(\d+%?\s*(?:convert|close|sign|sale))|(?:convert|close|sign|sale).*?(\d+)/i);
+        if (match) object = (match[1] || match[2] || match[3] || match[4] || '').slice(0, 80);
       }
       // 如果不改
-      if (!if_unchanged && (msg.includes('现在') || msg.includes('不改')) && /\d/.test(msg)) {
+      if (!if_unchanged && (msgLower.includes('现在') || msgLower.includes('不改') || msgLower.includes('currently') || msgLower.includes('unchanged')) && /\d/.test(msg)) {
         if_unchanged = msg.slice(0, 80);
       }
       // 如果改变
-      if (!if_changed && (msg.includes('至少') || msg.includes('能有') || msg.includes('希望')) && /\d/.test(msg)) {
+      if (!if_changed && (msgLower.includes('至少') || msgLower.includes('能有') || msgLower.includes('希望') || msgLower.includes('at least') || msgLower.includes('could') || msgLower.includes('hope')) && /\d/.test(msg)) {
         if_changed = msg.slice(0, 80);
       }
       // 价值代价
-      if (!stake && (msg.includes('损失') || msg.includes('机会') || msg.includes('万'))) {
+      if (!stake && (msgLower.includes('损失') || msgLower.includes('机会') || msgLower.includes('万') || msgLower.includes('lose') || msgLower.includes('opportunity') || msg.includes('$') || msg.includes('k'))) {
         stake = msg.slice(0, 80);
       }
       // 验证时间
       if (!verify_window) {
-        const timeMatch = msg.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天内?|\d+小时|一周)/);
+        const timeMatch = msg.match(/(周[一二三四五六日天]|明天|后天|今天|\d+天内?|\d+小时|一周|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week|\d+ days?|\d+ hours?|a week)/i);
         if (timeMatch) verify_window = timeMatch[1];
       }
     }
@@ -1286,11 +1432,11 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
     return null;
   };
 
-  // 【v14.2】strategy 路径（增强提取逻辑）
+  // 【v14.2】strategy 路径（增强提取逻辑）【v10】双语关键词
   if (state.path === 'strategy') {
-    // 【v14.2】智能提取：分析 AI 问题 + 用户回答的配对
+    // 【v15】智能提取：分析 AI 问题 + 用户回答的配对（世界规则版）
     const extractFromHistory = () => {
-      let target = null, chain = [], weakest = null, assumption = null, pressure = null, nextStep = null;
+      let target = null, chain = [], weakest = null, assumption = null, assumptionSource = null, worldRule = null, nextStep = null;
 
       // 遍历对话，找 AI 问题后的用户回答
       for (let i = 0; i < history.length - 1; i++) {
@@ -1298,40 +1444,54 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
         const userMsg = history[i + 1];
         if (aiMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
 
-        const aiText = aiMsg.content || '';
+        const aiText = (aiMsg.content || '').toLowerCase();
         const userText = userMsg.content || '';
 
         // 1. 提取目标（AI 问"想要什么结果"后的回答）
-        if (!target && (aiText.includes('想要') || aiText.includes('结果') || aiText.includes('目标'))) {
+        if (!target && (aiText.includes('想要') || aiText.includes('结果') || aiText.includes('目标') ||
+            aiText.includes('want') || aiText.includes('outcome') || aiText.includes('goal') || aiText.includes('result'))) {
           target = userText.slice(0, 150);
         }
 
         // 2. 提取决策链（AI 问"要经过哪几步"后的回答）
-        if (chain.length === 0 && (aiText.includes('几步') || aiText.includes('步骤') || aiText.includes('链条'))) {
-          // 尝试拆分用户的步骤描述
-          const steps = userText.split(/[，,。；;、→]/).filter(s => s.trim().length > 2);
+        if (chain.length === 0 && (aiText.includes('几步') || aiText.includes('步骤') || aiText.includes('链条') ||
+            aiText.includes('steps') || aiText.includes('chain') || aiText.includes('happen'))) {
+          const steps = userText.split(/[，,。；;、→\-]/).filter(s => s.trim().length > 2);
           if (steps.length >= 2) {
             chain = steps.slice(0, 5).map(s => s.trim().slice(0, 30));
           }
         }
 
         // 3. 提取承重环（AI 问"哪一环最不确定/没把握"后的回答）
-        if (!weakest && (aiText.includes('不确定') || aiText.includes('没把握') || aiText.includes('承重') || aiText.includes('关键'))) {
+        if (!weakest && (aiText.includes('不确定') || aiText.includes('没把握') || aiText.includes('承重') || aiText.includes('关键') ||
+            aiText.includes('uncertain') || aiText.includes('not sure') || aiText.includes('critical') || aiText.includes('weakest') ||
+            aiText.includes('least certain') || aiText.includes('least confident') || aiText.includes('worried about'))) {
           weakest = userText.slice(0, 150);
         }
 
         // 4. 提取假设（AI 问"默认什么是真的"后的回答）
-        if (!assumption && (aiText.includes('默认') || aiText.includes('假设') || aiText.includes('没验证'))) {
+        if (!assumption && (aiText.includes('默认') || aiText.includes('假设') || aiText.includes('没验证') ||
+            aiText.includes('assume') || aiText.includes('assumption') || aiText.includes('verified') || aiText.includes('taking for granted'))) {
           assumption = userText.slice(0, 150);
         }
 
-        // 5. 提取压力测试结果（AI 问"如果假设错了会怎样"后的回答）
-        if (!pressure && (aiText.includes('如果') && (aiText.includes('错') || aiText.includes('不成立') || aiText.includes('不对')))) {
-          pressure = userText.slice(0, 150);
+        // 5.【v15】提取假设来源（AI 问"什么时候开始这么想/这个想法来自哪"后的回答）
+        if (!assumptionSource && (aiText.includes('什么时候') || aiText.includes('来自') || aiText.includes('怎么形成') ||
+            aiText.includes('when did') || aiText.includes('where did') || aiText.includes('how did') || aiText.includes('came from'))) {
+          assumptionSource = userText.slice(0, 150);
         }
 
-        // 6. 提取下一步（AI 问"接下来先做什么"后的回答）
-        if (!nextStep && (aiText.includes('接下来') || aiText.includes('先') || aiText.includes('下一步') || aiText.includes('验证'))) {
+        // 6.【v15】提取世界规则（AI 问"一直信着的规则/背后的信念"后的回答）
+        if (!worldRule && (aiText.includes('规则') || aiText.includes('信念') || aiText.includes('一直信') || aiText.includes('底层') ||
+            aiText.includes('rule') || aiText.includes('belief') || aiText.includes('always believed') || aiText.includes('underlying'))) {
+          if (userText.length > 10) {
+            worldRule = userText.slice(0, 200);
+          }
+        }
+
+        // 7. 提取下一步（AI 问"接下来先做什么"后的回答）
+        if (!nextStep && (aiText.includes('接下来') || aiText.includes('先') || aiText.includes('下一步') || aiText.includes('验证') ||
+            aiText.includes('next') || aiText.includes('first') || aiText.includes('verify') || aiText.includes('start with'))) {
           if (userText.length > 10) {
             nextStep = userText.slice(0, 150);
           }
@@ -1340,103 +1500,134 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
 
       // 备用：从用户消息关键词提取
       for (const msg of userMessages) {
-        if (!target && msg.length > 20 && (msg.includes('想要') || msg.includes('希望') || msg.includes('目标'))) {
+        const msgLower = msg.toLowerCase();
+        if (!target && msg.length > 20 && (msgLower.includes('想要') || msgLower.includes('希望') || msgLower.includes('目标') ||
+            msgLower.includes('want') || msgLower.includes('goal') || msgLower.includes('hope'))) {
           target = msg.slice(0, 150);
         }
-        if (!assumption && msg.length > 20 && (msg.includes('以为') || msg.includes('认为') || msg.includes('觉得'))) {
+        if (!assumption && msg.length > 20 && (msgLower.includes('以为') || msgLower.includes('认为') || msgLower.includes('觉得') ||
+            msgLower.includes('thought') || msgLower.includes('assumed') || msgLower.includes('believed'))) {
           assumption = msg.slice(0, 150);
         }
-        if (!pressure && msg.length > 15 && (msg.includes('如果不') || msg.includes('风险') || msg.includes('失败') || msg.includes('没有'))) {
-          pressure = msg.slice(0, 150);
+        // 【v15】假设来源备用提取
+        if (!assumptionSource && msg.length > 15 && (msgLower.includes('从小') || msgLower.includes('以前') || msgLower.includes('一直') || msgLower.includes('过去') ||
+            msgLower.includes('since') || msgLower.includes('always') || msgLower.includes('grew up') || msgLower.includes('used to'))) {
+          assumptionSource = msg.slice(0, 150);
         }
-        if (!nextStep && msg.length > 15 && (msg.includes('先') || msg.includes('第一') || msg.includes('接下来') || msg.includes('打算'))) {
+        // 【v15】世界规则备用提取
+        if (!worldRule && msg.length > 20 && (msgLower.includes('我一直') || msgLower.includes('我总觉得') || msgLower.includes('我相信') || msgLower.includes('我的原则') ||
+            msgLower.includes('i always') || msgLower.includes('i believe') || msgLower.includes('my rule') || msgLower.includes('my principle'))) {
+          worldRule = msg.slice(0, 200);
+        }
+        if (!nextStep && msg.length > 15 && (msgLower.includes('先') || msgLower.includes('第一') || msgLower.includes('接下来') || msgLower.includes('打算') ||
+            msgLower.includes('first') || msgLower.includes('start') || msgLower.includes('next') || msgLower.includes('plan to'))) {
           nextStep = msg.slice(0, 150);
         }
       }
 
-      return { target, chain, weakest, assumption, pressure, nextStep };
+      return { target, chain, weakest, assumption, assumptionSource, worldRule, nextStep };
     };
 
     const fallback = extractFromHistory();
 
-    // 生成机会钩
+    // 【v15】生成机会钩：基于 world_rule（双语）
     let strategyHook = null;
+    const worldRule = state.world_rule || fallback.worldRule;
     const hiddenAssumption = state.hidden_assumption || fallback.assumption;
+
     if (state.ai_generated_hook) {
       strategyHook = state.ai_generated_hook;
+    } else if (worldRule) {
+      // 有世界规则时，机会钩基于规则
+      const rulePreview = worldRule.slice(0, 30);
+      strategyHook = isEn
+        ? `You've seen the rule that's been running underneath — "${rulePreview}...". That rule might be shaping other decisions too. If you want to look, we can dig into those next time.`
+        : `你看见了那条一直在底下运转的规则——"${rulePreview}..."。这条规则可能还在影响你其他的决策。想看的话，下次可以一块挖。`;
     } else if (hiddenAssumption) {
-      strategyHook = `你这个决策想清楚了——而你刚才那条"${hiddenAssumption.slice(0, 20)}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
+      // 没有世界规则但有假设时，用假设
+      const preview = hiddenAssumption.slice(0, 20);
+      strategyHook = isEn
+        ? `You've thought through this decision — but that assumption "${preview}..." might be blocking other decisions too. If you want to look, we can dig into that next time.`
+        : `你这个决策想清楚了——而你刚才那条"${preview}..."的假设，可能还卡着你别的决策。想看的话，下次可以一块看。`;
     }
 
-    // 【v14.3 fix】strategyCap 时，未挖到的字段显示"本次未深入"
-    const notDeep = isStrategyCap ? '本次未深入' : null;
-
-    // 提取 prediction
-    const pred = extractPrediction();
-    // 如果是 strategyCap 且 prediction 为空或字段缺失，填充"本次未深入"
-    let finalPrediction = pred;
-    if (isStrategyCap && (!pred || (!pred.stake && !pred.object))) {
-      finalPrediction = {
-        object: pred?.object || notDeep,
-        if_unchanged: pred?.if_unchanged || notDeep,
-        if_changed: pred?.if_changed || notDeep,
-        stake: pred?.stake || notDeep,
-        verify_window: pred?.verify_window || notDeep
-      };
-    }
+    // 【v15】strategyCap 时，未挖到的字段显示"本次未深入"（双语）
+    const notDeep = isStrategyCap ? (isEn ? 'Not explored this time' : '本次未深入') : null;
 
     return {
-      decision: state.originalProblem || userMessages[0] || '未记录',
+      decision: state.originalProblem || userMessages[0] || (isEn ? 'Not recorded' : '未记录'),
       target_outcome: state.target_outcome || fallback.target || (isStrategyCap ? notDeep : null),
       decision_chain: state.decision_chain?.length > 0 ? state.decision_chain : (fallback.chain.length > 0 ? fallback.chain : null),
       weakest_link: state.weakest_link || fallback.weakest || (isStrategyCap ? notDeep : null),
       hidden_assumption: state.hidden_assumption || fallback.assumption || (isStrategyCap ? notDeep : null),
-      pressure_test_result: state.pressure_test_result || fallback.pressure || (isStrategyCap ? notDeep : null),
+      assumption_source: fallback.assumptionSource || (isStrategyCap ? notDeep : null),  // 【v15】假设来源
+      world_rule: worldRule || (isStrategyCap ? notDeep : null),                          // 【v15】世界规则
       next_step: state.next_step || fallback.nextStep || (isStrategyCap ? notDeep : null),
-      prediction: finalPrediction,  // 【v12.2】可证伪预测
-      next_gap_hook: isStrategyCap ? null : strategyHook  // strategyCap 时不给机会钩（没资格）
+      next_gap_hook: isStrategyCap ? null : strategyHook  // strategyCap 时不给机会钩
     };
   }
 
-  // early 路径
+  // early 路径【v10】双语
   if (state.path === 'early') {
     const exp = findExperimentContent();
+    // 双语关键词查找
+    const coreAssumption = userMessages.find(m => {
+      const ml = m.toLowerCase();
+      return ml.includes('我以为') || ml.includes('我觉得') || ml.includes('thought') || ml.includes('believed') || ml.includes('assumed');
+    })?.slice(0, 80) || null;
+    const challengedAssumption = userMessages.find(m => {
+      const ml = m.toLowerCase();
+      return ml.includes('没想过') || ml.includes('原来') || ml.includes('never thought') || ml.includes('realize') || ml.includes('turns out');
+    })?.slice(0, 80) || null;
+    const predictionMsg = userMessages.find(m => (m.includes('个') || /\d/.test(m)) && m.length > 10)?.slice(0, 80) || null;
+    const successDef = userMessages.find(m => {
+      const ml = m.toLowerCase();
+      return ((ml.includes('成功') || ml.includes('验证') || ml.includes('success') || ml.includes('validate')) && /\d/.test(m));
+    })?.slice(0, 80) || null;
+
     return {
       current_challenge: originalProblem,
-      core_assumption: userMessages.find(m => m.includes('我以为') || m.includes('我觉得'))?.slice(0, 80) || null,
-      challenged_assumption: userMessages.find(m => m.includes('没想过') || m.includes('原来'))?.slice(0, 80) || null,
-      prediction: userMessages.find(m => m.includes('个') && /\d/.test(m))?.slice(0, 80) || null,
-      success_definition: userMessages.find(m => (m.includes('成功') || m.includes('验证')) && /\d/.test(m))?.slice(0, 80) || null,
+      core_assumption: coreAssumption,
+      challenged_assumption: challengedAssumption,
+      prediction: predictionMsg,
+      success_definition: successDef,
       seven_day_experiment: {
-        experiment: exp.experiment || '待设计的最小实验',
-        success_criteria: exp.criteria || '成功标准',
-        time_horizon: '7天',
-        owner: '你'
+        experiment: exp.experiment || (isEn ? 'Minimum experiment to design' : '待设计的最小实验'),
+        success_criteria: exp.criteria || (isEn ? 'Success criteria' : '成功标准'),
+        time_horizon: isEn ? '7 days' : '7天',
+        owner: isEn ? 'You' : '你'
       },
       next_gap_hook  // 【v11】出口机会钩
     };
   }
 
-  // org · retrospective（无实验卡）
+  // org · retrospective（无实验卡）【v10】双语
   if (state.branch === 'retrospective') {
     const findEarlyWarning = () => {
       for (const msg of userMessages) {
-        if (msg.includes('早就') || msg.includes('其实当时') ||
-            msg.includes('信号') || msg.includes('迹象') ||
-            msg.includes('没注意') || msg.includes('忽视')) {
+        const ml = msg.toLowerCase();
+        if (ml.includes('早就') || ml.includes('其实当时') ||
+            ml.includes('信号') || ml.includes('迹象') ||
+            ml.includes('没注意') || ml.includes('忽视') ||
+            ml.includes('early sign') || ml.includes('warning') ||
+            ml.includes('should have') || ml.includes('ignored') || ml.includes('missed')) {
           return msg.slice(0, 100);
         }
       }
       return null;
     };
 
+    const assumptionSource = userMessages.find(m => {
+      const ml = m.toLowerCase();
+      return ml.includes('来自') || ml.includes('因为过去') || ml.includes('一直以来') ||
+             ml.includes('came from') || ml.includes('because') || ml.includes('always');
+    })?.slice(0, 100) || null;
+
     return {
       current_problem: originalProblem,
       causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
       wrong_assumptions: findWrongAssumptions(),
-      assumption_source: userMessages.find(m =>
-        m.includes('来自') || m.includes('因为过去') || m.includes('一直以来')
-      )?.slice(0, 100) || null,
+      assumption_source: assumptionSource,
       world_rule: state.world_rule || null,
       next_early_signal: findEarlyWarning(),
       is_retrospective: true,
@@ -1445,22 +1636,26 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null) {
     };
   }
 
-  // org · actionable（有实验卡 + 可证伪预测）
+  // org · actionable（有实验卡 + 可证伪预测）【v10】双语
   const exp = findExperimentContent();
+  const assumptionSource = userMessages.find(m => {
+    const ml = m.toLowerCase();
+    return ml.includes('来自') || ml.includes('因为过去') || ml.includes('一直以来') ||
+           ml.includes('came from') || ml.includes('because') || ml.includes('always');
+  })?.slice(0, 100) || null;
+
   return {
     current_problem: originalProblem,
     causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
     wrong_assumptions: findWrongAssumptions(),
-    assumption_source: userMessages.find(m =>
-      m.includes('来自') || m.includes('因为过去') || m.includes('一直以来')
-    )?.slice(0, 100) || null,
+    assumption_source: assumptionSource,
     world_rule: state.world_rule || null,
     seven_day_experiment: {
-      hypothesis: exp.hypothesis || '待验证的假设',
-      experiment: exp.experiment || '本周可执行的最小实验',
-      success_criteria: exp.criteria || '成功标准',
-      time_horizon: '7天',
-      owner: '你'
+      hypothesis: exp.hypothesis || (isEn ? 'Hypothesis to validate' : '待验证的假设'),
+      experiment: exp.experiment || (isEn ? 'Minimum experiment this week' : '本周可执行的最小实验'),
+      success_criteria: exp.criteria || (isEn ? 'Success criteria' : '成功标准'),
+      time_horizon: isEn ? '7 days' : '7天',
+      owner: isEn ? 'You' : '你'
     },
     prediction: extractPrediction(),  // 【v12.2】可证伪预测
     next_gap_hook  // 【v11】出口机会钩
@@ -2103,11 +2298,11 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '14.3-strategy-10step',
+    version: '15.0-strategy-world-rule',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
-    architecture: 'v14-reflective-dialogue',
+    architecture: 'v15-world-rule',
     hard_caps: HARD_CAPS
   });
 });
@@ -2117,7 +2312,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log('组织镜子 v14.3 - 策略型十步流程');
+  console.log('组织镜子 v15.0 - 策略型世界规则');
   console.log('='.repeat(60));
   console.log(`\n访问地址: http://localhost:${PORT}\n`);
   console.log(`后台地址: http://localhost:${PORT}/admin.html\n`);

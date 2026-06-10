@@ -4,6 +4,57 @@
 
 一个让企业领导者**自己发现**组织真实瓶颈的 AI 咨询对话工具。
 
+## v15.0 策略型世界规则 (2026-06-10 更新)
+
+### v15 核心理念
+
+> strategy 路的终点不是"想清楚决策"，而是"看见决策背后那条一直信着的世界规则"。
+
+### v15 核心变化
+
+| 维度 | 旧（v14 压力测试版） | 新（v15 世界规则版） |
+|------|-------------------|-------------------|
+| **终点** | 压力测试 + 下一步 | 世界规则认领 + 轻下一步 |
+| **收尾信号** | 多标志检测 | `has_world_rule && has_next_step` |
+| **硬上限** | 16轮 | 24轮（仅防技术失控） |
+| **收尾风格** | 可能硬切 | 必须温和、留余味 |
+| **输出卡** | 8字段含 prediction | 8字段含 world_rule |
+
+### strategy 路输出卡（v15 格式）
+
+```json
+{
+  "decision": "用户要做的决策",
+  "target_outcome": "用户想要的结果",
+  "decision_chain": ["步骤1","步骤2","步骤3"],
+  "weakest_link": "最关键的承重环",
+  "hidden_assumption": "用户默认但没验证的假设",
+  "assumption_source": "这个假设的来源",
+  "world_rule": "用户认领的世界规则",
+  "next_step": "接下来先验证的一步"
+}
+```
+
+### 收尾条件
+
+| 条件 | 触发 |
+|------|------|
+| `strategyReady` | `has_world_rule && has_next_step` |
+| `strategyCap` | 24轮硬上限（收尾温和，不硬切） |
+| `user_requested` | 用户点击"结束"按钮 |
+
+### v15 修改文件清单
+
+| 文件 | 改动内容 |
+|------|----------|
+| `prompts/consultant.js` | strategy 路提示词改为"挖世界规则"版 |
+| `server.js` | 硬上限 24轮，收尾条件简化，输出格式移除 prediction 改用 world_rule |
+| `public/app.js` | `buildStrategyPathCard()` 显示新字段 |
+| `public/i18n.js` | 新增 `field_assumption_source` 和 `field_world_rule` |
+| `public/styles.css` | 新增 `.card-field.world-rule` 样式 |
+
+---
+
 ## v11.0 问题/机会双脸循环 (2026-06-09 更新)
 
 ### v11 核心理念
