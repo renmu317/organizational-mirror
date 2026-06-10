@@ -2343,7 +2343,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '16.0-identity-lever',
+    version: '16.1-strategy-stats',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
