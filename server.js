@@ -633,9 +633,29 @@ function recoverStateFromHistory(state, history) {
   state.originalProblem = firstMsg;
   state.total_turns = userMessages.length;
 
+  // 【v16】检测操作层答案（用于恢复 shallow_streak）
+  const isOperationAnswer = (content) => {
+    const r = (content || '').toLowerCase();
+    // 操作层关键词：我该/我要/我应该/先做/去做 + 没有身份/信念表达
+    const opKeywords = ['我该', '我要', '我应该', '应该先', '要先', '先做', '去做', '打算做', '准备做'];
+    const hasOp = opKeywords.some(k => r.includes(k));
+    // 排除身份/信念表达
+    const identityKeywords = ['我是', '我觉得自己', '我一直', '我相信', '我认为'];
+    const hasIdentity = identityKeywords.some(k => r.includes(k));
+    return hasOp && !hasIdentity;
+  };
+
   // 2. 回放所有用户消息，恢复各种标志
+  let consecutiveOpAnswers = 0;
   for (const msg of userMessages) {
     const content = msg.content || '';
+
+    // 【v16】追踪连续操作层答案
+    if (isOperationAnswer(content)) {
+      consecutiveOpAnswers++;
+    } else {
+      consecutiveOpAnswers = 0;
+    }
 
     // early 路径
     if (state.path === 'early') {
@@ -659,12 +679,17 @@ function recoverStateFromHistory(state, history) {
     // org 路径
     if (state.path === 'org') {
       if (detectRetrospective(content)) state.branch = 'retrospective';
-      // world_rule 检测需要从 AI 响应中提取，这里无法恢复
     }
   }
 
-  console.log(`[v14.3] 从 history 恢复状态: path=${state.path}, turns=${state.total_turns}, ` +
-    `decision_clarity=${state.has_decision_clarity}, pressure_test=${state.has_pressure_test}, next_step=${state.has_next_step}`);
+  // 【v16】恢复 shallow_streak
+  state.shallow_streak = consecutiveOpAnswers;
+  if (consecutiveOpAnswers >= 2) {
+    state.cognition_layer = 'behavior';  // 卡在操作层
+  }
+
+  console.log(`[v16] 从 history 恢复状态: path=${state.path}, turns=${state.total_turns}, ` +
+    `shallow_streak=${state.shallow_streak}, decision_clarity=${state.has_decision_clarity}, next_step=${state.has_next_step}`);
 }
 
 // ============================================================
@@ -2298,7 +2323,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '15.0-strategy-world-rule',
+    version: '16.0-identity-lever',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
