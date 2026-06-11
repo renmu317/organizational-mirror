@@ -955,6 +955,7 @@ class OrganizationalMirror {
 
   /**
    * 显示发现卡 - 双路径支持
+   * 【v17】优先显示叙事报告
    */
   showDiscoveryCard(output, path) {
     // 保存报告数据供下载使用
@@ -964,7 +965,11 @@ class OrganizationalMirror {
     const cardContent = document.getElementById('cardContent');
     const cardTitle = document.getElementById('cardTitle');
 
-    if (path === 'early') {
+    // 【v17】如果有叙事报告，优先显示
+    if (output.narrative_report) {
+      cardTitle.textContent = t('card_title_letter') || '照见信';
+      cardContent.innerHTML = this.buildNarrativeReportCard(output);
+    } else if (path === 'early') {
       // 早期路径输出卡
       cardTitle.textContent = t('card_title_plan');
       cardContent.innerHTML = this.buildEarlyPathCard(output);
@@ -986,6 +991,41 @@ class OrganizationalMirror {
 
     // 显示卡片
     this.discoveryCard.style.display = 'block';
+  }
+
+  /**
+   * 【v17】构建叙事报告卡（照见信）
+   */
+  buildNarrativeReportCard(output) {
+    // 将 markdown 格式的文本转换为 HTML（简单处理）
+    const formatNarrative = (text) => {
+      if (!text) return '';
+      // 保留换行
+      return text
+        .split('\n\n')
+        .map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+        .join('');
+    };
+
+    let html = `
+      <div class="narrative-report">
+        <div class="narrative-content">
+          ${formatNarrative(output.narrative_report)}
+        </div>
+      </div>
+    `;
+
+    // 【v11】机会钩（如果有）
+    if (output.next_gap_hook) {
+      html += `
+        <div class="card-field next-gap-hook">
+          <label>${t('field_next_gap') || '下一道缝'}</label>
+          <p class="pull-style">${output.next_gap_hook}</p>
+        </div>
+      `;
+    }
+
+    return html;
   }
 
   /**

@@ -1462,3 +1462,49 @@ body {
     display: block;
   }
 }
+
+/* ===== 【v17】叙事报告（照见信）样式 ===== */
+.narrative-report {
+  padding: 20px 0;
+}
+
+.narrative-content {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--text-primary);
+}
+
+.narrative-content p {
+  margin-bottom: 1.2em;
+  text-indent: 2em;
+}
+
+.narrative-content p:first-child {
+  text-indent: 0;
+}
+
+.narrative-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 引用样式（用户原话） */
+.narrative-content em,
+.narrative-content strong {
+  color: var(--primary);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* 卡片内叙事报告的分隔线 */
+.narrative-report + .card-field {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-light);
+}
+
+/* 照见信标题样式 */
+#cardTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}

@@ -50,6 +50,7 @@ const I18N = {
     card_title_discovery: "你的发现",
     card_title_plan: "你的验证计划",
     card_title_decision: "你的决策",
+    card_title_letter: "照见信",
 
     // 发现卡字段 - 通用
     btn_download: "下载报告",
@@ -161,6 +162,7 @@ const I18N = {
     card_title_discovery: "Your Discovery",
     card_title_plan: "Your Validation Plan",
     card_title_decision: "Your Decision",
+    card_title_letter: "Letter of Insight",
 
     // Discovery card fields - common
     btn_download: "Download Report",

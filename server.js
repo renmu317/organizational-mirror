@@ -1,38 +1,24 @@
 /**
- * 组织镜子 v14 - 反映式对话表达
+ * 组织镜子 v17 - 叙事报告（照见信）
  *
- * v14 核心改动：
- * 1. 姿态转换：从"苏格拉底式审问"变成"并排坐着一起看"
- * 2. 四手法替换连环追问：
- *    - 反映代替追问（主力）：用陈述句把用户的话说回去
- *    - 情境重建+叙事邀请：让用户"回到现场"讲故事
- *    - 并置代替质问矛盾：平静并排摆两句话，让用户自己看见缝隙
- *    - 信念外化：说"那个想法"而非"你的错误假设"
- * 3. 红线：建设性不适感必须还在，别滑成情绪按摩
- * 4. 内核不变：世界模型六层、贝叶斯、撬假设的目标全保留
+ * v17 核心改动：
+ * 1. 报告结构从"填空卡片"变成"v3 循环叙事文章"
+ * 2. v3 循环：操作层痛 → 旧世界规则 → 裂缝(Gap) → 旧身份 → 真问题 →
+ *             新机会/损失 → 新身份 → 验证计划 → 半掩的面纱
+ * 3. 第二人称书信体，写给用户的"照见信"
+ * 4. 核心是 world_rule，没挖到就诚实说明
+ * 5. 收尾时调用 AI 生成叙事报告，添加到 discovery_output.narrative_report
  *
- * v12.1 延续：
- * - 策略型八步流程（含压力测试）
- * - 收尾条件：has_decision_clarity + has_pressure_test + has_next_step
- * - 新增字段：target_outcome, pressure_test_result
+ * v16.3 延续：
+ * - AI 判定 path（时态与指向），不依赖关键词匹配
+ * - unknown 不塞 early，首轮温和澄清
  *
- * v11 延续：
- * - next_gap_hook 字段：闭环后的机会钩（pull 式、虚掩门）
- * - 三条红线：机会钩永远是 pull、闭环优先、去留无条件
- *
- * v8 核心改动：
- * 1. 全路径硬收尾条件（不依赖 AI 的 session_complete）：
- *    - retrospectiveDone: retrospective 分支 + world_rule
- *    - actionableDone: actionable 分支 + world_rule + 1轮
- *    - earlyReady: early 路径 + 成功定义 + 实验行动
- *    - earlyCap: early 路径 8轮硬上限
- *    - orgCap: org 路径 18轮硬上限
- *    - userRequestedEnd: 用户点击"结束并生成卡片"
- * 2. 前端常驻"结束并生成卡片"按钮
- * 3. 防止 early 路径无限循环提问
+ * v14 延续：
+ * - 反映式对话姿态（四手法替换连环追问）
+ * - 世界模型六层、贝叶斯、撬假设目标不变
  *
  * API 端点:
- * - POST /api/respond - 核心对话接口（新增 endRequested 参数）
+ * - POST /api/respond - 核心对话接口
  * - POST /api/session/save - 保存完成的对话
  * - GET /api/stats - 获取案例库统计
  * - GET /api/stats/depth - 对话深度统计
@@ -46,6 +32,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 【v7】简化导入 - 只保留必要函数
+// 【v17】新增 buildReportPrompt 用于生成叙事报告
 const {
   buildSystemPrompt,
   getOpeningMessage,
@@ -53,7 +40,8 @@ const {
   isResponseTooShort,
   shouldProbeAssumption,
   detectRetrospective,
-  buildCaseHints
+  buildCaseHints,
+  buildReportPrompt
 } = require('./prompts/consultant');
 
 // 向量检索和提示词优化（可选模块）
@@ -855,6 +843,13 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     } else {
       state.rule_turn_count = 0; // 刚挖到，从 0 开始
     }
+    // 【v17.2】world_rule 存在时，自动更新 cognition_layer 为 'rule'
+    if (state.cognition_layer !== 'rule') {
+      state.cognition_layer = 'rule';
+      state.deepest_layer_reached = 'rule';
+      state.shallow_streak = 0;
+      console.log(`[v17.2] world_rule detected, auto-update cognition_layer to 'rule'`);
+    }
   }
 
   // 6. curiosity / probe
@@ -903,7 +898,11 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     const detectedRule = detectWorldRule(userReply);
     if (detectedRule && !state.world_rule) {
       state.world_rule = detectedRule;
-      console.log(`[v15] 检测到世界规则: "${detectedRule.slice(0, 50)}..."`);
+      // 【v17.2】同步更新 cognition_layer 为 'rule'
+      state.cognition_layer = 'rule';
+      state.deepest_layer_reached = 'rule';
+      state.shallow_streak = 0;
+      console.log(`[v15/v17.2] 检测到世界规则并更新层级: "${detectedRule.slice(0, 50)}..."`);
     }
     if (detectPrediction(userReply, parsed)) {
       state.has_prediction = true;  // 【v14.3】预测
@@ -916,12 +915,17 @@ function updateStateFromAIResponse(state, parsed, userReply) {
     if (parsed.pressure_test_result) state.pressure_test_result = parsed.pressure_test_result;
   }
 
-  // 【v16.2】org 路径也需要从用户消息检测 world_rule
-  if (state.path === 'org') {
+  // 【v17.2】所有路径都需要从用户消息检测 world_rule（不受 path 限制）
+  // 这样即使 path 是 unknown，也能检测到 world_rule
+  if (!state.world_rule) {
     const detectedRule = detectWorldRule(userReply);
-    if (detectedRule && !state.world_rule) {
+    if (detectedRule) {
       state.world_rule = detectedRule;
-      console.log(`[v16.2] org 路径检测到世界规则: "${detectedRule.slice(0, 50)}..."`);
+      // 【v17.2】同步更新 cognition_layer 为 'rule'
+      state.cognition_layer = 'rule';
+      state.deepest_layer_reached = 'rule';
+      state.shallow_streak = 0;
+      console.log(`[v17.2] 检测到世界规则并更新层级 (path=${state.path}): "${detectedRule.slice(0, 50)}..."`);
     }
   }
 
@@ -1036,7 +1040,14 @@ function detectWorldRule(userReply) {
     '我以前没想到', '我之前没想过', '原来我一直', '我没意识到', '我居然',
     '没想到我', '我竟然', '我发现我其实', '我终于看清',
     // 【v16.2 新增】外化表达
-    '那个想法', '这个信念', '这条规则', '我心里有一个'
+    '那个想法', '这个信念', '这条规则', '我心里有一个',
+    // 【v17.1 新增】因果式/默认式/习惯式信念
+    '因为', '所以', '默认', '前提是', '条件是',
+    '我觉得应该', '我习惯', '自然就会', '肯定会', '应该会',
+    '我默认', '我假设', '我以为', '我认为',
+    // 【v17.1 新增】行为背后的信念
+    '这样才能', '这样才会', '不这样就', '要不然',
+    '本来就是', '天生就', '理应', '按理说'
   ];
 
   // 英文模式
@@ -1045,7 +1056,11 @@ function detectWorldRule(userReply) {
     'i must', 'i have to', 'otherwise', 'or else',
     // 【v16.2 新增】
     'i never realized', 'i didn\'t realize', 'turns out i', 'i\'ve been',
-    'equals', 'means that', 'that belief', 'this rule'
+    'equals', 'means that', 'that belief', 'this rule',
+    // 【v17.1 新增】
+    'because', 'so that', 'by default', 'assume', 'assumed',
+    'i thought', 'i figured', 'naturally', 'should be', 'supposed to',
+    'that\'s how', 'the way it works'
   ];
 
   // 【v16.2 新增】检测等式型规则："A=B" 或 "A 等于 B" 或 "A 就是 B"
@@ -1055,10 +1070,11 @@ function detectWorldRule(userReply) {
                          rulePatternEn.some(p => rLower.includes(p)) ||
                          hasEquationPattern;
 
-  // 必须是陈述句，长度够（表达一个完整的信念）
-  if (hasRulePattern && r.length >= 15) {
+  // 【v17.1】放宽长度限制：10字符即可（中文一个信念句约5-8字）
+  // 但排除过短的单词回复
+  if (hasRulePattern && r.length >= 10) {
     // 提取规则内容（取前150字符作为规则摘要）
-    console.log(`[v16.2] detectWorldRule 触发: "${r.slice(0, 50)}..."`);
+    console.log(`[v17.1] detectWorldRule 触发: "${r.slice(0, 50)}..."`);
     return r.slice(0, 150);
   }
 
@@ -1257,7 +1273,9 @@ app.post('/api/respond', async (req, res) => {
       } else if (earlyReady || earlyCap) {
         finalReply = `很好，你已经有了一个可以在 7 天内验证的实验计划。去执行吧，回来告诉我结果。`;
       } else if (orgCap) {
-        finalReply = `我们聊了很多。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层。你可以带着这些思考，之后再继续探索。`;
+        // 【v17.2】去掉技术性层级描述，改为自然表达
+        const ruleHint = state.world_rule ? `你刚才说的那个"${state.world_rule.slice(0, 40)}..."——可能就是值得你再想想的。` : '';
+        finalReply = `我们聊了很多。${ruleHint}可以带着这些先消化，有需要再继续。`;
       } else if (strategyReady) {
         // 【v15】策略型自然收尾（挖到世界规则）
         const rulePreview = state.world_rule.slice(0, 50) + (state.world_rule.length > 50 ? '...' : '');
@@ -1271,7 +1289,12 @@ app.post('/api/respond', async (req, res) => {
           ? `We've covered a lot of ground. ${deepestFind ? `What you said about "${deepestFind}" — that might be worth sitting with.` : 'There\'s something here worth sitting with.'} Take these thoughts with you, and we can continue whenever you\'re ready.`
           : `我们聊到这里，已经挖出了不少。${deepestFind ? `你刚才说的那个"${deepestFind}"——可能就是值得你再想想的。` : '这里面有些东西值得你再想想。'}可以带着这些先消化，有需要再继续。`;
       } else if (userRequestedEnd) {
-        finalReply = `好的，我们就聊到这里。目前挖到的深度是「${state.deepest_layer_reached || 'result'}」层${state.world_rule ? `，你提到的规则是"${state.world_rule.slice(0, 30)}..."` : ''}。`;
+        // 【v17.2】去掉技术性层级描述，改为自然表达
+        if (state.world_rule) {
+          finalReply = `好的，我们就聊到这里。你刚才说的那个"${state.world_rule.slice(0, 40)}..."——带着它，有需要再继续。`;
+        } else {
+          finalReply = `好的，我们就聊到这里。可以带着这些想法先消化，有需要再继续。`;
+        }
       }
       console.log(`[v8] 服务端兜底：${closeReason}，覆盖 AI 回复`);
     }
@@ -1309,6 +1332,17 @@ app.post('/api/respond', async (req, res) => {
       }
 
       response.discovery_output = discoveryOutput || buildDefaultDiscoveryOutput(state, history, closeReason, conversationLang);
+
+      // 【v17】生成叙事报告（v3 循环文章）
+      try {
+        const narrativeReport = await generateNarrativeReport(history, state, conversationLang);
+        if (narrativeReport) {
+          response.discovery_output.narrative_report = narrativeReport;
+          console.log('[v17] 叙事报告已添加到 discovery_output');
+        }
+      } catch (err) {
+        console.error('[v17] 叙事报告生成异常:', err.message);
+      }
 
       // 【v16.2 调试日志】收卡时打印关键状态
       console.log(`[v16.2] 收卡状态:`, {
@@ -1396,6 +1430,55 @@ app.post('/api/respond', async (req, res) => {
     });
   }
 });
+
+// ============================================================
+// 【v17】生成叙事报告（调用 AI 生成 v3 循环文章）
+// ============================================================
+async function generateNarrativeReport(history, state, conversationLang = null) {
+  console.log(`[v17.2] generateNarrativeReport 收到 conversationLang: "${conversationLang}"`);
+  const reportPrompt = buildReportPrompt(history, state, conversationLang);
+
+  try {
+    console.log('[v17] 开始生成叙事报告...');
+    console.log(`[v17.2] 报告提示词语言指令: ${conversationLang === 'en' ? 'English' : '中文'}`);
+
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: reportPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      })
+    });
+
+    if (!response.ok) {
+      console.error('[v17] 报告生成 API 错误:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const narrativeReport = data.choices?.[0]?.message?.content?.trim();
+
+    if (!narrativeReport || narrativeReport.length < 50) {
+      console.error('[v17] 报告生成结果过短或为空');
+      return null;
+    }
+
+    console.log(`[v17] 叙事报告生成成功，长度: ${narrativeReport.length}`);
+    return narrativeReport;
+
+  } catch (error) {
+    console.error('[v17] 报告生成失败:', error.message);
+    return null;
+  }
+}
 
 // ============================================================
 // 构建默认发现输出
@@ -2534,7 +2617,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '16.3-ai-path',
+    version: '18.0-causal-first',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
