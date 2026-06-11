@@ -524,6 +524,31 @@ function parseAIResponse(content, state = null, userMessage = null) {
       }
     }
 
+    // 【v16.3】从 AI 回复风格推断 path（当关键词检测无结果时）
+    if (detectedPath === 'unknown') {
+      const aiLower = textContent.toLowerCase();
+      // org 风格：叙事邀请（回到过去）
+      if (aiLower.includes('带我回到') || aiLower.includes('那段时间') || aiLower.includes('当时') ||
+          aiLower.includes('上线前') || aiLower.includes('之前') || aiLower.includes('那一刻') ||
+          aiLower.includes('take me back') || aiLower.includes('back then')) {
+        detectedPath = 'org';
+        console.log(`[v16.3] 从 AI 回复风格推断 path: org (叙事邀请)`);
+      }
+      // strategy 风格：决策导向
+      else if (aiLower.includes('接下来') || aiLower.includes('你打算') || aiLower.includes('选择') ||
+               aiLower.includes('决定') || aiLower.includes('怎么办') ||
+               aiLower.includes('next') || aiLower.includes('plan to') || aiLower.includes('decide')) {
+        detectedPath = 'strategy';
+        console.log(`[v16.3] 从 AI 回复风格推断 path: strategy (决策导向)`);
+      }
+      // early 风格：验证导向
+      else if (aiLower.includes('验证') || aiLower.includes('测试') || aiLower.includes('客户') ||
+               aiLower.includes('validate') || aiLower.includes('test') || aiLower.includes('customer')) {
+        detectedPath = 'early';
+        console.log(`[v16.3] 从 AI 回复风格推断 path: early (验证导向)`);
+      }
+    }
+
     console.log('[parse] Treating as plain text reply');
     return {
       reply: textContent,
@@ -629,16 +654,48 @@ function getOrCreateState(sessionId) {
 // ============================================================
 function recoverStateFromHistory(state, history) {
   // 如果已有状态，无需恢复
-  if (state.path !== 'unknown') return;
+  if (state.path && state.path !== 'unknown') return;
 
   const userMessages = history.filter(m => m.role === 'user');
+  const aiMessages = history.filter(m => m.role === 'assistant');
   if (userMessages.length === 0) return;
 
-  // 1. 从第一条用户消息检测 path
   const firstMsg = userMessages[0]?.content || '';
-  state.path = detectPathFromMessage(firstMsg);
   state.originalProblem = firstMsg;
   state.total_turns = userMessages.length;
+
+  // 【v16.3】优先从 AI 历史消息中恢复 path（AI 判定为主）
+  // 尝试从最近的 AI 消息中解析 path
+  for (let i = aiMessages.length - 1; i >= 0; i--) {
+    const aiContent = aiMessages[i]?.content || '';
+    try {
+      // 尝试从 AI 消息中提取 JSON
+      const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.path && parsed.path !== 'unknown') {
+          state.path = parsed.path;
+          console.log(`[v16.3] 从 AI 历史恢复 path: ${parsed.path}`);
+          break;
+        }
+      }
+    } catch (e) {
+      // 解析失败，继续尝试下一条
+    }
+  }
+
+  // 【v16.3】只有在 AI 历史中找不到 path 时，才用关键词兜底
+  // 且不默认倒进 early
+  if (!state.path || state.path === 'unknown') {
+    const keywordPath = detectPathFromMessage(firstMsg);
+    if (keywordPath) {
+      state.path = keywordPath;
+      console.log(`[v16.3] 关键词兜底 path: ${keywordPath}`);
+    } else {
+      state.path = 'unknown';  // 保持 unknown，不硬塞进 early
+      console.log(`[v16.3] 无法判定 path，保持 unknown`);
+    }
+  }
 
   // 【v16】检测操作层答案（用于恢复 shallow_streak）
   const isOperationAnswer = (content) => {
@@ -734,12 +791,21 @@ function updateDifficulty(state, userReply) {
 // 【v8】从 AI JSON 更新状态（主驱动）
 // ============================================================
 function updateStateFromAIResponse(state, parsed, userReply) {
-  // 1. path（AI 判定为主，首次确定后锁定）
-  if (state.path === 'unknown' && parsed.path && parsed.path !== 'unknown') {
-    state.path = parsed.path;
-    state.stage = 1;
-    state.difficulty = 'L1';
-    state.vague_streak = 0;
+  // 【v16.3】path 判定：AI 判定为主
+  // AI 输出的 path 优先于关键词检测结果
+  // 一旦 AI 确定了有效 path，就锁定
+  const aiPath = parsed.path;
+  const currentPath = state.path;
+
+  // AI 返回了有效 path，且当前 path 尚未被 AI 锁定 → 用 AI 的
+  if (aiPath && aiPath !== 'unknown') {
+    if (!state.path_locked_by_ai) {
+      state.path = aiPath;
+      state.path_locked_by_ai = true;  // 标记：AI 已锁定 path
+      state.stage = 1;
+      state.difficulty = 'L1';
+      console.log(`[v16.3] AI 判定 path: ${aiPath}`);
+    }
   }
 
   // 2. branch（org only；一旦 retrospective 锁定）
@@ -2468,7 +2534,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '16.2-card-fix',
+    version: '16.3-ai-path',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
