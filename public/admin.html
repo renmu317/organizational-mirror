@@ -358,6 +358,40 @@
       color: var(--text-secondary);
     }
 
+    /* 照见信样式 */
+    .discovery-field.narrative-report {
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .discovery-field.narrative-report label {
+      font-size: 0.875rem;
+      color: var(--warning);
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+    }
+
+    .narrative-content {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      font-size: 0.875rem;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .narrative-content p {
+      margin-bottom: 1rem;
+    }
+
+    .narrative-content p:last-child {
+      margin-bottom: 0;
+    }
+
     .btn-back {
       background: transparent;
       border: 1px solid var(--border);
@@ -866,6 +900,12 @@
               <div class="discovery-field">
                 <label>7-Day Experiment</label>
                 <p>${escapeHtml(typeof discovery.seven_day_experiment === 'string' ? discovery.seven_day_experiment : discovery.seven_day_experiment.experiment || 'N/A')}</p>
+              </div>
+            ` : ''}
+            ${discovery.narrative_report ? `
+              <div class="discovery-field narrative-report">
+                <label>📜 Narrative Report (照见信)</label>
+                <div class="narrative-content">${escapeHtml(discovery.narrative_report).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</div>
               </div>
             ` : ''}
           </div>

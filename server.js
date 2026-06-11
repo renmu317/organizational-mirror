@@ -481,13 +481,24 @@ function parseAIResponse(content, state = null, userMessage = null) {
 
   // 1. 直接解析
   let parsed = tryParse(content);
-  if (parsed && parsed.reply) return parsed;
+  if (parsed && parsed.reply !== undefined) return parsed;
 
   // 2. 提取 {...} 块
   const jsonMatch = (content || '').match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     parsed = tryParse(jsonMatch[0]);
-    if (parsed && parsed.reply) return parsed;
+    // 【v18.2 fix】检查 reply !== undefined 而不是 truthy（支持空字符串）
+    if (parsed && parsed.reply !== undefined) {
+      // 【v18.2】如果 reply 为空，但 JSON 前有文本，用前面的文本作为 reply
+      if (!parsed.reply && jsonMatch.index > 0) {
+        const textBefore = (content || '').slice(0, jsonMatch.index).trim();
+        if (textBefore.length > 10) {
+          parsed.reply = textBefore;
+          console.log('[v18.2] 混合格式：JSON 的 reply 为空，使用 JSON 前的文本');
+        }
+      }
+      return parsed;
+    }
   }
 
   // 3. 尝试修复常见 JSON 错误（末尾多余逗号等）
@@ -496,7 +507,16 @@ function parseAIResponse(content, state = null, userMessage = null) {
       .replace(/,\s*}/g, '}')  // 移除末尾多余逗号
       .replace(/,\s*]/g, ']'); // 移除数组末尾多余逗号
     parsed = tryParse(cleaned);
-    if (parsed && parsed.reply) return parsed;
+    if (parsed && parsed.reply !== undefined) {
+      // 同样处理混合格式
+      if (!parsed.reply && jsonMatch.index > 0) {
+        const textBefore = (content || '').slice(0, jsonMatch.index).trim();
+        if (textBefore.length > 10) {
+          parsed.reply = textBefore;
+        }
+      }
+      return parsed;
+    }
   }
 
   // 4. 如果是纯文本回复，构造最小 JSON
@@ -1683,7 +1703,7 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
             aiText.includes('steps') || aiText.includes('chain') || aiText.includes('happen'))) {
           const steps = userText.split(/[，,。；;、→\-]/).filter(s => s.trim().length > 2);
           if (steps.length >= 2) {
-            chain = steps.slice(0, 5).map(s => s.trim().slice(0, 30));
+            chain = steps.slice(0, 5).map(s => s.trim().slice(0, 100));
           }
         }
 
@@ -1826,6 +1846,41 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
     };
   }
 
+  // 【v18.2】通用兜底提取 causal_chain（org 路径共用）
+  const extractCausalChainFromHistoryCommon = () => {
+    // 1. 遍历对话，找 AI 问因果后的用户回答
+    for (let i = 0; i < history.length - 1; i++) {
+      const aiMsg = history[i];
+      const userMsg = history[i + 1];
+      if (aiMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
+
+      const aiText = (aiMsg.content || '').toLowerCase();
+      const userText = userMsg.content || '';
+
+      // AI 问"发生了什么/怎么回事/过程"后的用户回答
+      if (aiText.includes('发生') || aiText.includes('怎么') || aiText.includes('过程') ||
+          aiText.includes('然后') || aiText.includes('接着') || aiText.includes('链条') ||
+          aiText.includes('happen') || aiText.includes('then') || aiText.includes('process')) {
+        const steps = userText.split(/[，,。；;、→\-\n]/).filter(s => s.trim().length > 3 && s.trim().length < 50);
+        if (steps.length >= 2) {
+          return steps.slice(0, 5).map(s => s.trim());
+        }
+      }
+    }
+
+    // 2. 备用：从用户消息中找因果描述
+    for (const msg of userMessages) {
+      if (msg.length > 30 && (msg.includes('→') || msg.includes('然后') || msg.includes('导致') || msg.includes('所以'))) {
+        const steps = msg.split(/[，,。；;、→\-]/).filter(s => s.trim().length > 3 && s.trim().length < 50);
+        if (steps.length >= 2) {
+          return steps.slice(0, 5).map(s => s.trim());
+        }
+      }
+    }
+
+    return null;
+  };
+
   // org · retrospective（无实验卡）【v10】双语
   if (state.branch === 'retrospective') {
     const findEarlyWarning = () => {
@@ -1864,9 +1919,12 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
       }
     }
 
+    // 【v18.2】兜底提取 causal_chain
+    const retroCausalChain = state.causalChain?.length > 0 ? state.causalChain : extractCausalChainFromHistoryCommon();
+
     return {
       current_problem: originalProblem,
-      causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
+      causal_chain: retroCausalChain || [null],
       wrong_assumptions: findWrongAssumptions(),
       assumption_source: assumptionSource,
       world_rule: retroWorldRule,  // 【v16.2】从 state 或对话兜底提取
@@ -1941,9 +1999,12 @@ function buildDefaultDiscoveryOutput(state, history = [], closeReason = null, co
   // 【v16.2】兜底提取 world_rule
   const worldRuleValue = extractWorldRuleFromHistory();
 
+  // 【v18.2】使用共用函数提取 causal_chain
+  const causalChainValue = state.causalChain?.length > 0 ? state.causalChain : extractCausalChainFromHistoryCommon();
+
   return {
     current_problem: originalProblem,
-    causal_chain: state.causalChain?.length > 0 ? state.causalChain : [null],
+    causal_chain: causalChainValue || [null],
     wrong_assumptions: findWrongAssumptions(),
     assumption_source: assumptionSource,
     world_rule: worldRuleValue,  // 【v16.2】从 state 或对话兜底提取
@@ -2617,7 +2678,7 @@ app.get('/api/admin/users/:id/stats', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '18.1-causal-verify',
+    version: '18.2-layer-distinction',
     hasApiKey: !!DEEPSEEK_API_KEY,
     hasSupabase: !!(SUPABASE_URL && SUPABASE_SERVICE_KEY),
     caseLibraryExists: fs.existsSync(CASE_LIBRARY_PATH),
