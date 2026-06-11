@@ -1471,7 +1471,212 @@ ${output.redefined_problem || nc}
   }
 
   /**
-   * 下载报告
+   * 【v18.3】生成 HTML 格式的照见信（手机/电脑通用）
+   */
+  generateReportHTML(output, path) {
+    const lang = getUILang();
+    const dateLocale = lang === 'zh' ? 'zh-CN' : 'en-US';
+    const date = new Date().toLocaleDateString(dateLocale);
+
+    // 标题
+    let title;
+    if (output.narrative_report) {
+      title = lang === 'zh' ? '照见信' : 'Mirror Letter';
+    } else if (path === 'early') {
+      title = lang === 'zh' ? '验证计划' : 'Validation Plan';
+    } else if (path === 'strategy') {
+      title = lang === 'zh' ? '决策报告' : 'Decision Report';
+    } else {
+      title = lang === 'zh' ? '发现报告' : 'Discovery Report';
+    }
+
+    // 内容
+    let content = '';
+
+    if (output.narrative_report) {
+      // 【v17+】照见信叙事格式
+      content = output.narrative_report
+        .split('\n\n')
+        .map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+        .join('\n      ');
+    } else {
+      // 结构化报告（回退）
+      const nc = t('not_covered');
+      if (path === 'strategy') {
+        content = `
+      <h2>${t('field_decision')}</h2>
+      <p>${output.decision || nc}</p>
+
+      <h2>${t('field_decision_chain')}</h2>
+      <p>${output.decision_chain?.join(' → ') || nc}</p>
+
+      <h2>${t('field_weakest_link')}</h2>
+      <p>${output.weakest_link || nc}</p>
+
+      <h2>${t('field_hidden_assumption')}</h2>
+      <p>${output.hidden_assumption || nc}</p>
+
+      <h2>${t('field_next_step')}</h2>
+      <p>${output.next_step || nc}</p>`;
+      } else if (path === 'early') {
+        content = `
+      <h2>${t('field_current_idea')}</h2>
+      <p>${output.current_idea || output.current_problem || nc}</p>
+
+      <h2>${t('field_core_assumption')}</h2>
+      <p>${output.core_assumption || nc}</p>
+
+      <h2>${t('field_challenged_assumption')}</h2>
+      <p>${output.challenged_assumption || nc}</p>
+
+      <h2>${t('field_prediction')}</h2>
+      <p>${output.prediction || nc}</p>
+
+      <h2>${t('field_success_definition')}</h2>
+      <p>${output.success_definition || nc}</p>`;
+      } else {
+        content = `
+      <h2>${t('field_current_problem')}</h2>
+      <p>${output.current_problem || nc}</p>
+
+      <h2>${t('field_causal_chain')}</h2>
+      <p>${output.causal_chain?.join(' → ') || nc}</p>
+
+      <h2>${t('field_world_rule')}</h2>
+      <p>${output.world_rule || nc}</p>
+
+      <h2>${t('field_redefined_problem')}</h2>
+      <p>${output.redefined_problem || nc}</p>`;
+      }
+    }
+
+    // 机会钩
+    let hookSection = '';
+    if (output.next_gap_hook) {
+      const hookLabel = lang === 'zh' ? '下一道缝' : 'Next Gap';
+      hookSection = `
+    <div class="hook">
+      <h3>${hookLabel}</h3>
+      <p>${output.next_gap_hook}</p>
+    </div>`;
+    }
+
+    // 完整 HTML（内联样式，确保手机兼容）
+    const html = `<!DOCTYPE html>
+<html lang="${lang}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.8;
+      color: #333;
+      background: #f9f9f9;
+      padding: 20px;
+      max-width: 100%;
+    }
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 32px 24px;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.5em;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .date {
+      font-size: 0.875em;
+      color: #888;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #eee;
+    }
+    .content {
+      font-size: 1em;
+    }
+    .content p {
+      margin-bottom: 1.2em;
+      text-align: justify;
+    }
+    .content h2 {
+      font-size: 1.1em;
+      color: #444;
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+      font-weight: 500;
+    }
+    .hook {
+      margin-top: 32px;
+      padding: 16px;
+      background: linear-gradient(135deg, #f8f4ff 0%, #fff5f5 100%);
+      border-radius: 8px;
+      border-left: 3px solid #9b59b6;
+    }
+    .hook h3 {
+      font-size: 0.9em;
+      color: #9b59b6;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .hook p {
+      font-size: 0.95em;
+      color: #666;
+      margin: 0;
+    }
+    .footer {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+      font-size: 0.8em;
+      color: #aaa;
+      text-align: center;
+    }
+    @media (max-width: 480px) {
+      body {
+        padding: 12px;
+      }
+      .container {
+        padding: 24px 16px;
+        border-radius: 8px;
+      }
+      h1 {
+        font-size: 1.3em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>${title}</h1>
+    <div class="date">${date}</div>
+    <div class="content">
+      ${content}
+    </div>
+    ${hookSection}
+    <div class="footer">
+      ${lang === 'zh' ? '由照见生成' : 'Generated by Mirror'}
+    </div>
+  </div>
+</body>
+</html>`;
+
+    return html;
+  }
+
+  /**
+   * 下载报告（v18.3: 改为 HTML 格式）
    */
   downloadReport() {
     if (!this.lastDiscoveryOutput) {
@@ -1479,22 +1684,26 @@ ${output.redefined_problem || nc}
       return;
     }
 
-    const markdown = this.generateReportMarkdown(this.lastDiscoveryOutput, this.lastPath);
-    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const html = this.generateReportHTML(this.lastDiscoveryOutput, this.lastPath);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement('a');
     link.href = url;
-    // 【v12】添加 strategy 路径文件名 + 【v10】双语支持
+
+    // 文件名
     const lang = getUILang();
     let filename;
-    if (this.lastPath === 'early') {
-      filename = lang === 'zh' ? '验证计划报告.md' : 'validation-plan.md';
+    if (this.lastDiscoveryOutput.narrative_report) {
+      filename = lang === 'zh' ? '照见信.html' : 'mirror-letter.html';
+    } else if (this.lastPath === 'early') {
+      filename = lang === 'zh' ? '验证计划.html' : 'validation-plan.html';
     } else if (this.lastPath === 'strategy') {
-      filename = lang === 'zh' ? '决策报告.md' : 'decision-report.md';
+      filename = lang === 'zh' ? '决策报告.html' : 'decision-report.html';
     } else {
-      filename = lang === 'zh' ? '发现报告.md' : 'discovery-report.md';
+      filename = lang === 'zh' ? '发现报告.html' : 'discovery-report.html';
     }
+
     link.download = filename;
     document.body.appendChild(link);
     link.click();
